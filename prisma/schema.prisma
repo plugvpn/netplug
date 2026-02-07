@@ -1,0 +1,146 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// System configuration for setup wizard and VPN settings
+model SystemConfig {
+  id                String   @id @default(cuid())
+  isSetupComplete   Boolean  @default(false)
+  vpnConfiguration  Json?    // Stores both OpenVPN and WireGuard configs
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// Admin users with bcrypt-hashed passwords
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  password      String    // bcrypt hash
+  role          String    @default("admin")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+}
+
+// NextAuth Account model
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// NextAuth Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NextAuth Verification Token model
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// VPN Server definitions (can have multiple servers with different protocols)
+model VPNServer {
+  id          String   @id @default(cuid())
+  name        String
+  protocol    String   // "openvpn" or "wireguard"
+  host        String
+  port        Int?
+  configPath  String?
+  isActive    Boolean  @default(true)
+  privateKey  String?  // WireGuard server private key
+  publicKey   String?  // WireGuard server public key
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vpnUsers    VPNUser[]
+}
+
+// VPN client accounts
+model VPNUser {
+  id                  String    @id @default(cuid())
+  username            String    @unique
+  commonName          String?   // For OpenVPN
+  ipAddress           String?
+  endpoint            String?   // WireGuard peer's real public IP:port
+  lastHandshake       DateTime? // WireGuard last handshake timestamp
+  privateKey          String?   // WireGuard client private key
+  publicKey           String?   // WireGuard client public key
+  bytesReceived       BigInt    @default(0)  // Current session received
+  bytesSent           BigInt    @default(0)  // Current session sent
+  prevBytesReceived   BigInt    @default(0)  // Previous sync received (for rate calc)
+  prevBytesSent       BigInt    @default(0)  // Previous sync sent (for rate calc)
+  bytesReceivedRate   BigInt    @default(0)  // Bytes per second received
+  bytesSentRate       BigInt    @default(0)  // Bytes per second sent
+  totalBytesReceived  BigInt    @default(0)  // All-time cumulative received
+  totalBytesSent      BigInt    @default(0)  // All-time cumulative sent
+  remainingDays       Int?      // Days until expiration
+  remainingTrafficGB  Float?    // Remaining traffic in GB
+  connectedAt         DateTime?
+  isConnected         Boolean   @default(false)
+  isEnabled           Boolean   @default(true)
+  serverId            String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  server              VPNServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId])
+}
+
+// Obfuscation servers (TrustTunnel, UDP2RAW, etc.)
+model ObfuscationServer {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // "trusttunnel" or "udp2raw"
+  host        String
+  port        Int
+  targetHost  String?  // Target VPN server host
+  targetPort  Int?     // Target VPN server port
+  isActive    Boolean  @default(true)
+  config      Json?    // Additional configuration options
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Bandwidth snapshots for time series charts
+model BandwidthSnapshot {
+  id            String   @id @default(cuid())
+  timestamp     DateTime @default(now())
+  downloadRate  BigInt   // Bytes per second
+  uploadRate    BigInt   // Bytes per second
+  createdAt     DateTime @default(now())
+
+  @@index([timestamp])
+}

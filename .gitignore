@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+/sandbox
+
+# logs
+server.log
+server.log.old

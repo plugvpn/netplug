@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build: .
+    container_name: netplug-dashboard
+    ports:
+      - "3000:3000/tcp"
+      - "443:443/udp"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - $PWD/:/app
+      - $PWD/sandbox:/data
+    restart: unless-stopped
+    networks:
+      - netplug-network
+
+networks:
+  netplug-network:
+    driver: bridge

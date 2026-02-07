@@ -1,26 +1,138 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --border: 214.3 31.8% 91.4%;
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --border: 217.2 32.6% 17.5%;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@font-face {
+  font-family: 'SF Pro Display';
+  src: local('SF Pro Display'), local('Helvetica Neue'), local('Helvetica');
+  font-weight: 100 900;
+  font-style: normal;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Custom scrollbar for light mode */
+  html ::-webkit-scrollbar,
+  body ::-webkit-scrollbar,
+  * ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  html ::-webkit-scrollbar-track,
+  body ::-webkit-scrollbar-track,
+  * ::-webkit-scrollbar-track {
+    background: #f3f4f6;
+    border-radius: 5px;
+  }
+
+  html ::-webkit-scrollbar-thumb,
+  body ::-webkit-scrollbar-thumb,
+  * ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #10b981, #14b8a6);
+    border-radius: 5px;
+    border: 2px solid #f3f4f6;
+  }
+
+  html ::-webkit-scrollbar-thumb:hover,
+  body ::-webkit-scrollbar-thumb:hover,
+  * ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #059669, #0d9488);
+  }
+
+  /* Custom scrollbar for dark mode */
+  .dark html ::-webkit-scrollbar,
+  .dark body ::-webkit-scrollbar,
+  .dark * ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .dark html ::-webkit-scrollbar-track,
+  .dark body ::-webkit-scrollbar-track,
+  .dark * ::-webkit-scrollbar-track {
+    background: #030712;
+    border-radius: 5px;
+  }
+
+  .dark html ::-webkit-scrollbar-thumb,
+  .dark body ::-webkit-scrollbar-thumb,
+  .dark * ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #047857, #0f766e);
+    border-radius: 5px;
+    border: 2px solid #030712;
+  }
+
+  .dark html ::-webkit-scrollbar-thumb:hover,
+  .dark body ::-webkit-scrollbar-thumb:hover,
+  .dark * ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #065f46, #115e59);
+  }
+
+  /* Firefox scrollbar */
+  html,
+  body,
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #10b981 #f3f4f6;
+  }
+
+  .dark html,
+  .dark body,
+  .dark * {
+    scrollbar-color: #047857 #030712;
+  }
+}
+
+/* Toast animations */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
 }
