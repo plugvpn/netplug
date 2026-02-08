@@ -32,7 +32,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { username, serverId, commonName, ipAddress, privateKey: providedPrivateKey, publicKey: providedPublicKey, remainingDays, remainingTrafficGB } = body;
+    const { username, serverId, commonName, ipAddress, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficGB } = body;
 
     // Validate required fields
     if (!username || !serverId) {
@@ -155,6 +155,7 @@ export async function POST(request: Request) {
     // Handle WireGuard key pair for WireGuard users
     let privateKey: string | null = providedPrivateKey || null;
     let publicKey: string | null = providedPublicKey || null;
+    let presharedKey: string | null = providedPresharedKey || null;
 
     if (server.protocol === 'wireguard') {
       // Validate that keys are provided
@@ -165,6 +166,9 @@ export async function POST(request: Request) {
         );
       }
       console.log(`[WireGuard] Using provided key pair for user: ${username}`);
+      if (presharedKey) {
+        console.log(`[WireGuard] Using preshared key for enhanced security: ${username}`);
+      }
     }
 
     // Create the user
@@ -176,6 +180,7 @@ export async function POST(request: Request) {
         ipAddress: assignedIpAddress || null,
         privateKey: privateKey,
         publicKey: publicKey,
+        presharedKey: presharedKey,
         remainingDays: remainingDays || null,
         remainingTrafficGB: remainingTrafficGB || null,
         isEnabled: true,

@@ -97,6 +97,7 @@ model VPNUser {
   lastHandshake       DateTime? // WireGuard last handshake timestamp
   privateKey          String?   // WireGuard client private key
   publicKey           String?   // WireGuard client public key
+  presharedKey        String?   // WireGuard preshared key (optional additional security)
   bytesReceived       BigInt    @default(0)  // Current session received
   bytesSent           BigInt    @default(0)  // Current session sent
   prevBytesReceived   BigInt    @default(0)  // Previous sync received (for rate calc)

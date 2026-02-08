@@ -27,6 +27,7 @@ interface VPNUser {
   ipAddress: string | null;
   privateKey: string | null;
   publicKey: string | null;
+  presharedKey: string | null;
   bytesReceived: string;  // Serialized from BigInt
   bytesSent: string;  // Serialized from BigInt
   totalBytesReceived: string;  // Serialized from BigInt
@@ -187,7 +188,9 @@ function UsersPageContent() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [showConfig, setShowConfig] = useState(true);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [showPresharedKey, setShowPresharedKey] = useState(false);
   const [generatingKeys, setGeneratingKeys] = useState(false);
+  const [generatingPsk, setGeneratingPsk] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -251,6 +254,7 @@ function UsersPageContent() {
       ipAddress: null,
       privateKey: '',
       publicKey: '',
+      presharedKey: null,
       remainingDays: null,
       remainingTrafficGB: null,
       isEnabled: true,
@@ -345,6 +349,30 @@ function UsersPageContent() {
     }
   };
 
+  const handleGeneratePsk = async () => {
+    setGeneratingPsk(true);
+    try {
+      const response = await fetch('/api/setup/generate-psk', {
+        method: 'POST',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setEditingUser({
+          ...editingUser,
+          presharedKey: data.presharedKey,
+        });
+        showToast('Preshared key generated successfully!', 'success');
+      } else {
+        showToast('Failed to generate preshared key', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to generate preshared key:', error);
+      showToast('Failed to generate preshared key', 'error');
+    } finally {
+      setGeneratingPsk(false);
+    }
+  };
+
   const handlePrivateKeyChange = async (privateKey: string) => {
     setEditingUser({ ...editingUser, privateKey, publicKey: '' });
 
@@ -387,6 +415,7 @@ function UsersPageContent() {
         ipAddress: editingUser.ipAddress || null,
         privateKey: editingUser.privateKey || null,
         publicKey: editingUser.publicKey || null,
+        presharedKey: editingUser.presharedKey || null,
         remainingDays: editingUser.remainingDays,
         remainingTrafficGB: editingUser.remainingTrafficGB,
         isEnabled: editingUser.isEnabled,
@@ -839,6 +868,61 @@ function UsersPageContent() {
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Automatically derived from the private key
+                </p>
+              </div>
+
+              {/* Preshared Key (Optional) */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Preshared Key (Optional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGeneratePsk}
+                    disabled={generatingPsk || !!editingUser.id}
+                    className="flex items-center gap-1.5 rounded-md border border-purple-600 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-400 dark:hover:bg-purple-900"
+                  >
+                    {generatingPsk ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Key className="h-3.5 w-3.5" />
+                        Generate PSK
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPresharedKey ? 'text' : 'password'}
+                    value={editingUser.presharedKey || ''}
+                    onChange={(e) => !editingUser.id && setEditingUser({ ...editingUser, presharedKey: e.target.value || null })}
+                    disabled={!!editingUser.id}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-10 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:disabled:bg-gray-900"
+                    placeholder="Optional: enhanced security with PSK"
+                  />
+                  {editingUser.presharedKey && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPresharedKey(!showPresharedKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                    >
+                      {showPresharedKey ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {editingUser.id
+                    ? 'Preshared key cannot be changed after creation'
+                    : 'Optional: Adds an extra layer of symmetric encryption for post-quantum security'}
                 </p>
               </div>
 

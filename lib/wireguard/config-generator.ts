@@ -102,6 +102,11 @@ ListenPort = ${wgConfig.serverPort}
           console.error(`[WireGuard] Public key not found for user: ${user.username}`);
         }
 
+        // Add preshared key if configured
+        if (user.presharedKey) {
+          config += `PresharedKey = ${user.presharedKey}\n`;
+        }
+
         config += `AllowedIPs = ${user.ipAddress}/32\n`;
 
         if (wgConfig.persistentKeepalive > 0) {
@@ -214,6 +219,11 @@ MTU = ${wgConfig.mtu}
     } else {
       config += `# ERROR: Server public key not found!\n`;
       config += `PublicKey = <SERVER_PUBLIC_KEY_NOT_FOUND>\n`;
+    }
+
+    // Add preshared key if configured for this user
+    if (user.presharedKey) {
+      config += `PresharedKey = ${user.presharedKey}\n`;
     }
 
     config += `Endpoint = ${wgConfig.serverHost}:${wgConfig.serverPort}
