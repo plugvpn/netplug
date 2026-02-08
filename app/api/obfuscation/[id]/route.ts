@@ -3,11 +3,12 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const server = await prisma.obfuscationServer.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!server) {
@@ -29,9 +30,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { name, type, host, port, targetHost, targetPort, isActive, config } = body;
 
@@ -55,7 +57,7 @@ export async function PUT(
     }
 
     const server = await prisma.obfuscationServer.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         ...(name && { name }),
         ...(type && { type }),
@@ -80,11 +82,12 @@ export async function PUT(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     await prisma.obfuscationServer.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return NextResponse.json({ success: true });
