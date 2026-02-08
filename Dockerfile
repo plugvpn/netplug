@@ -25,6 +25,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Generate Prisma Client
 RUN npx prisma generate
 
+# Set dummy DATABASE_URL for build (won't be used at runtime)
+ENV DATABASE_URL="file:./build-dummy.db"
+
 # Build Next.js application
 RUN npm run build
 

@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { isSetupComplete } from "@/lib/setup";
 
+// Force dynamic rendering since we need to check database and cookies
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   // Check if setup is complete in database
   const setupComplete = await isSetupComplete();
