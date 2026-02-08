@@ -48,7 +48,7 @@ async function initializeDatabase() {
 
     // Run Prisma migrations to create database and schema
     console.log('[Startup] Running Prisma migrations...');
-    execSync('node_modules/.bin/prisma migrate deploy', {
+    execSync('prisma migrate deploy', {
       cwd: process.cwd(),
       stdio: 'inherit',
       env: process.env,

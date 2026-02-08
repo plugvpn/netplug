@@ -35,11 +35,14 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-# Install wireguard-tools in the runtime image
-RUN apk add --no-cache wireguard-tools
+# Install wireguard-tools and sqlite in the runtime image
+RUN apk add --no-cache wireguard-tools sqlite
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Install Prisma CLI for migrations
+RUN npm install -g prisma
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
