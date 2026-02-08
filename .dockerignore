@@ -9,3 +9,10 @@ README.md
 .env
 .env.local
 .env.*.local
+.vscode
+.idea
+*.log
+coverage
+.DS_Store
+dist
+sandbox

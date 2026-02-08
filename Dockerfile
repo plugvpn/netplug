@@ -1,24 +1,61 @@
 FROM node:23-alpine AS base
-RUN apk add --no-cache wireguard-tools
 
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
-
-ENV NEXT_TELEMETRY_DISABLED=1
-
 WORKDIR /app
 
+# Copy dependency files
 COPY package.json package-lock.json ./
-RUN npm install -g npm@11.9.0
-RUN npm install
-COPY . .
-RUN npm build
+
+# Install dependencies
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
-
 WORKDIR /app
-COPY --from=deps /app /app
 
-CMD ["npm", "run", "start"]
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Set environment variables
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Generate Prisma Client
+RUN npx prisma generate
+
+# Build Next.js application
+RUN npm run build
+
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /app
+
+# Install wireguard-tools in the runtime image
+RUN apk add --no-cache wireguard-tools
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy necessary files from builder
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Copy Prisma files and generated client
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/prisma ./prisma
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
