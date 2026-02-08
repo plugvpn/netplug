@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   description: 'Initial setup wizard for NetPlug VPN Dashboard',
 }
 
+// Force dynamic rendering since we check database state
+export const dynamic = 'force-dynamic';
+
 export default async function SetupLayout({
   children,
 }: {
