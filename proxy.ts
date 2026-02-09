@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { isSetupComplete } from './lib/setup'
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -22,8 +23,8 @@ export default async function proxy(request: NextRequest) {
   const hasSession = request.cookies.get('authjs.session-token') ||
                      request.cookies.get('__Secure-authjs.session-token')
 
-  // Check setup completion via cookie
-  const setupComplete = request.cookies.get('setup-complete')?.value === 'true'
+  // Check setup completion via database
+  const setupComplete = await isSetupComplete()
 
   // If not authenticated and not on login/setup pages, redirect to login
   if (!hasSession) {
