@@ -4,8 +4,9 @@ import { isSetupComplete } from '@/lib/setup'
 export async function GET() {
   try {
     const setupComplete = await isSetupComplete()
+    const baseUrl = process.env.BASE_URL || process.env.AUTH_URL || 'http://localhost:3000'
 
-    const response = NextResponse.redirect(new URL('/dashboard', process.env.AUTH_URL || 'http://localhost:3000'))
+    const response = NextResponse.redirect(new URL('/dashboard', baseUrl))
 
     if (setupComplete) {
       // Set cookie to track setup completion
@@ -21,6 +22,7 @@ export async function GET() {
     return response
   } catch (error) {
     console.error('Error verifying setup:', error)
-    return NextResponse.redirect(new URL('/setup', process.env.AUTH_URL || 'http://localhost:3000'))
+    const baseUrl = process.env.BASE_URL || process.env.AUTH_URL || 'http://localhost:3000'
+    return NextResponse.redirect(new URL('/setup', baseUrl))
   }
 }
