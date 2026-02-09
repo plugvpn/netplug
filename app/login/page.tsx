@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
@@ -14,6 +14,10 @@ function LoginForm() {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    document.title = "Login | NetPlug Dashboard";
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

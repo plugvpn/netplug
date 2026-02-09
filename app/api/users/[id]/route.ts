@@ -16,7 +16,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { username, serverId, commonName, remainingDays, remainingTrafficGB, isEnabled } = body;
+    const { username, serverId, commonName, remainingDays, remainingTrafficBytes, isEnabled } = body;
 
     const user = await prisma.vPNUser.update({
       where: { id },
@@ -25,7 +25,7 @@ export async function PATCH(
         ...(serverId !== undefined && { serverId }),
         ...(commonName !== undefined && { commonName }),
         ...(remainingDays !== undefined && { remainingDays }),
-        ...(remainingTrafficGB !== undefined && { remainingTrafficGB }),
+        ...(remainingTrafficBytes !== undefined && { remainingTrafficBytes: remainingTrafficBytes ? BigInt(remainingTrafficBytes) : null }),
         ...(isEnabled !== undefined && { isEnabled }),
       },
       include: {

@@ -1,13 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Info, ArrowDownCircle, ArrowUpCircle, HardDrive, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { ActiveConnectionsTable } from "@/components/active-connections-table";
-import { ActivityLog } from "@/components/activity-log";
 import { BandwidthChart } from "@/components/bandwidth-chart";
-
-const tabs = ["Overview", "Active Connections", "Activity Log"];
 
 // Helper function to format bytes
 function formatBytes(bytes: string): string {
@@ -49,7 +46,6 @@ interface DataTransferStats {
 }
 
 export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState("Overview");
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [connectionStats, setConnectionStats] = useState<ConnectionStats | null>(null);
   const [dataTransferStats, setDataTransferStats] = useState<DataTransferStats | null>(null);
@@ -90,6 +86,10 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    document.title = "Overview | NetPlug Dashboard";
+  }, []);
+
+  useEffect(() => {
     async function initialFetch() {
       setLoading(true);
       await fetchData();
@@ -104,44 +104,28 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="h-full">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <PageHeader title="Status">
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 rounded border border-emerald-600 px-4 py-1.5 text-sm font-normal text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-500 dark:text-emerald-500 dark:hover:bg-emerald-950"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} strokeWidth={1.5} />
-          {refreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
+      <PageHeader title="Overview">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Synced from WireGuard every 10s</span>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded border border-gray-300 px-4 py-1.5 text-sm font-normal text-gray-600 transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:border-gray-500"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
       </PageHeader>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 bg-white px-8 dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex gap-8">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`relative pb-3 pt-4 text-sm font-normal transition-colors ${
-                activeTab === tab
-                  ? "text-emerald-600 dark:text-emerald-500"
-                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-              }`}
-            >
-              {tab}
-              {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600 dark:bg-emerald-500" />
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Content */}
-      <div className="p-8">
-        {activeTab === "Overview" && (
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-8">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Left Column - 2/3 width */}
             <div className="space-y-6 lg:col-span-2">
@@ -152,16 +136,12 @@ export default function DashboardPage() {
                 <h2 className="text-base font-normal text-gray-900 dark:text-gray-100">Connections</h2>
                 <Info className="h-4 w-4 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
               </div>
-              <button
-                onClick={() => setActiveTab("Active Connections")}
+              <Link
+                href="/dashboard/connections"
                 className="rounded border border-emerald-600 px-4 py-1.5 text-sm font-normal text-emerald-600 transition-colors hover:bg-emerald-50 dark:border-emerald-500 dark:text-emerald-500 dark:hover:bg-emerald-950"
               >
                 View active connections
-              </button>
-            </div>
-            <div className="mb-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Synced from WireGuard every 10s</span>
+              </Link>
             </div>
 
             {loading ? (
@@ -245,10 +225,6 @@ export default function DashboardPage() {
                 <Info className="h-4 w-4 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
               </div>
             </div>
-            <div className="mb-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Synced from WireGuard every 10s</span>
-            </div>
 
             {loading ? (
               <div className="space-y-4 animate-pulse">
@@ -259,11 +235,8 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 {/* Bandwidth Chart */}
                 <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Bandwidth Over Time (Last 24 Hours)</h3>
-                  </div>
-                  <BandwidthChart hours={24} />
+                  <h3 className="mb-3 text-sm font-medium text-gray-900 dark:text-gray-100">Bandwidth Over Time (This Month)</h3>
+                  <BandwidthChart mode="daily" />
                 </div>
 
                 {/* Total Transfer Stats */}
@@ -279,7 +252,7 @@ export default function DashboardPage() {
                         <span className="text-sm text-gray-700 dark:text-gray-300">Downloaded</span>
                       </div>
                       <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {formatBytes(dataTransferStats.total.received)}
+                        {formatBytes(dataTransferStats.total.sent)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -288,7 +261,7 @@ export default function DashboardPage() {
                         <span className="text-sm text-gray-700 dark:text-gray-300">Uploaded</span>
                       </div>
                       <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {formatBytes(dataTransferStats.total.sent)}
+                        {formatBytes(dataTransferStats.total.received)}
                       </span>
                     </div>
                     <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
@@ -361,15 +334,7 @@ export default function DashboardPage() {
           </div>
         </div>
           </div>
-        )}
-
-        {activeTab === "Active Connections" && (
-          <ActiveConnectionsTable />
-        )}
-
-        {activeTab === "Activity Log" && (
-          <ActivityLog />
-        )}
+        </div>
       </div>
     </div>
   );

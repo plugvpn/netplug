@@ -35,8 +35,8 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-# Install wireguard-tools, iptables, and sqlite in the runtime image
-RUN apk add --no-cache wireguard-tools iptables sqlite
+# Install wireguard-tools, iptables, sqlite, and iproute2 in the runtime image
+RUN apk add --no-cache wireguard-tools iptables sqlite iproute2
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

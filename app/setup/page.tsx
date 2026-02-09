@@ -19,6 +19,8 @@ function SetupPageContent() {
 
   // Check if admin already exists on mount
   useEffect(() => {
+    document.title = "Setup | NetPlug Dashboard";
+
     const checkAdmin = async () => {
       try {
         const response = await fetch('/api/setup/check-admin')

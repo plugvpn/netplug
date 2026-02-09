@@ -51,13 +51,23 @@ export async function generateWireGuardConfig(): Promise<string | null> {
       orderBy: { createdAt: 'asc' },
     });
 
+    // Ensure server address has CIDR notation
+    let serverAddress = wgConfig.serverAddress;
+    if (!serverAddress.includes('/')) {
+      // Extract CIDR from clientAddressRange (e.g., "10.8.0.0/24" -> "/24")
+      const cidr = wgConfig.clientAddressRange.includes('/')
+        ? wgConfig.clientAddressRange.substring(wgConfig.clientAddressRange.indexOf('/'))
+        : '/24'; // default fallback
+      serverAddress = `${serverAddress}${cidr}`;
+    }
+
     // Generate configuration content
     let config = `# WireGuard Server Configuration
 # Generated at: ${new Date().toISOString()}
 # DO NOT EDIT MANUALLY - This file is auto-generated
 
 [Interface]
-Address = ${wgConfig.serverAddress}
+Address = ${serverAddress}
 ListenPort = ${wgConfig.serverPort}
 `;
 

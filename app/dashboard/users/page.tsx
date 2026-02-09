@@ -25,6 +25,7 @@ interface VPNUser {
   username: string;
   commonName: string | null;
   ipAddress: string | null;
+  endpoint: string | null;
   privateKey: string | null;
   publicKey: string | null;
   presharedKey: string | null;
@@ -33,7 +34,7 @@ interface VPNUser {
   totalBytesReceived: string;  // Serialized from BigInt
   totalBytesSent: string;  // Serialized from BigInt
   remainingDays: number | null;
-  remainingTrafficGB: number | null;
+  remainingTrafficBytes: string | null;  // Serialized from BigInt
   connectedAt: Date | null;
   isConnected: boolean;
   isEnabled: boolean;
@@ -41,6 +42,11 @@ interface VPNUser {
   createdAt: Date;
   updatedAt: Date;
   server: VPNServer;
+}
+
+// UI version with numbers for editing
+interface VPNUserEdit extends Omit<Partial<VPNUser>, 'remainingTrafficBytes'> {
+  remainingTrafficBytes?: number | null;
 }
 
 // Custom syntax highlighter theme matching dashboard
@@ -177,7 +183,7 @@ function UsersPageContent() {
   const [servers, setServers] = useState<VPNServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<Partial<VPNUser> | null>(null);
+  const [editingUser, setEditingUser] = useState<VPNUserEdit | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<VPNUser | null>(null);
   const [isQrCodeModalOpen, setIsQrCodeModalOpen] = useState(false);
@@ -193,12 +199,24 @@ function UsersPageContent() {
   const [generatingPsk, setGeneratingPsk] = useState(false);
 
   useEffect(() => {
+    document.title = "Users | NetPlug Dashboard";
     fetchUsers();
     fetchServers();
+
+    // Poll for user data updates every 5 seconds (without showing loading spinner)
+    const interval = setInterval(() => {
+      fetchUsers(false);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (showLoading = true) => {
     try {
+      if (showLoading) {
+        setLoading(true);
+      }
+
       const response = await fetch('/api/users');
 
       if (!response.ok) {
@@ -220,7 +238,9 @@ function UsersPageContent() {
       console.error('Failed to fetch users:', error);
       setUsers([]);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -247,7 +267,7 @@ function UsersPageContent() {
     const wireguardServer = servers.find(s => s.protocol === 'wireguard');
     const serverId = wireguardServer?.id || 'wireguard';
 
-    const newUser: Partial<VPNUser> = {
+    const newUser: VPNUserEdit = {
       username: '',
       serverId: serverId,
       commonName: '',
@@ -256,7 +276,7 @@ function UsersPageContent() {
       publicKey: '',
       presharedKey: null,
       remainingDays: null,
-      remainingTrafficGB: null,
+      remainingTrafficBytes: null,
       isEnabled: true,
     };
 
@@ -292,7 +312,12 @@ function UsersPageContent() {
   };
 
   const handleEditUser = (user: VPNUser) => {
-    setEditingUser(user);
+    // Convert bytes to MB for display
+    const userWithMB = {
+      ...user,
+      remainingTrafficBytes: user.remainingTrafficBytes !== null ? Number(user.remainingTrafficBytes) / (1024 * 1024) : null
+    };
+    setEditingUser(userWithMB);
     setIsModalOpen(true);
   };
 
@@ -417,7 +442,10 @@ function UsersPageContent() {
         publicKey: editingUser.publicKey || null,
         presharedKey: editingUser.presharedKey || null,
         remainingDays: editingUser.remainingDays,
-        remainingTrafficGB: editingUser.remainingTrafficGB,
+        // Convert MB to bytes for storage (user enters MB, we store bytes)
+        remainingTrafficBytes: editingUser.remainingTrafficBytes !== null && editingUser.remainingTrafficBytes !== undefined
+          ? Math.floor(Number(editingUser.remainingTrafficBytes) * 1024 * 1024)
+          : null,
         isEnabled: editingUser.isEnabled,
       };
 
@@ -552,7 +580,22 @@ function UsersPageContent() {
   return (
     <div className="h-full">
       {/* Header */}
-      <PageHeader title="VPN Users" />
+      <PageHeader title="VPN Users">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Synced from WireGuard every 10s</span>
+          </div>
+          <button
+            onClick={() => fetchUsers()}
+            disabled={loading}
+            className="flex items-center gap-2 rounded border border-gray-300 px-4 py-1.5 text-sm font-normal text-gray-600 transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:border-gray-500"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+      </PageHeader>
 
       {/* Content */}
       <div className="p-8">
@@ -687,8 +730,8 @@ function UsersPageContent() {
                             </td>
                             <td className="px-8 py-4">
                               <div className="text-sm text-gray-300 dark:text-gray-400">
-                                <div>↓ {formatBytes(Number(user.totalBytesReceived) + Number(user.bytesReceived))}</div>
-                                <div>↑ {formatBytes(Number(user.totalBytesSent) + Number(user.bytesSent))}</div>
+                                <div>↑ {formatBytes(Number(user.totalBytesReceived) + Number(user.bytesReceived))}</div>
+                                <div>↓ {formatBytes(Number(user.totalBytesSent) + Number(user.bytesSent))}</div>
                               </div>
                             </td>
                             <td className="px-6 py-4">
@@ -698,7 +741,12 @@ function UsersPageContent() {
                             </td>
                             <td className="px-6 py-4">
                               <span className="text-sm text-gray-200 dark:text-gray-200">
-                                {user.remainingTrafficGB !== null ? `${user.remainingTrafficGB.toFixed(2)} GB` : '∞'}
+                                {user.remainingTrafficBytes !== null ? (() => {
+                                  const bytes = Number(user.remainingTrafficBytes);
+                                  const mb = bytes / (1024 * 1024);
+                                  const gb = bytes / (1024 * 1024 * 1024);
+                                  return gb >= 1 ? `${gb.toFixed(2)} GB` : `${mb.toFixed(2)} MB`;
+                                })() : '∞'}
                               </span>
                             </td>
                             <td className="px-6 py-4">
@@ -707,8 +755,8 @@ function UsersPageContent() {
                                   <Activity className="h-4 w-4 text-emerald-400 dark:text-emerald-400" />
                                   <div>
                                     <p className="text-sm font-medium text-gray-200 dark:text-gray-200">Connected</p>
-                                    {user.ipAddress && (
-                                      <p className="text-xs text-gray-500 dark:text-gray-500">{user.ipAddress}</p>
+                                    {user.endpoint && (
+                                      <p className="text-xs text-gray-500 dark:text-gray-500 font-mono">{user.endpoint}</p>
                                     )}
                                   </div>
                                 </div>
@@ -973,19 +1021,19 @@ function UsersPageContent() {
               {/* Remaining Traffic */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Remaining Traffic (GB, Optional)
+                  Remaining Traffic (MB, Optional)
                 </label>
                 <input
                   type="number"
-                  step="0.01"
-                  value={editingUser.remainingTrafficGB ?? ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, remainingTrafficGB: e.target.value ? parseFloat(e.target.value) : null })}
+                  step="1"
+                  value={editingUser.remainingTrafficBytes ?? ''}
+                  onChange={(e) => setEditingUser({ ...editingUser, remainingTrafficBytes: e.target.value ? parseFloat(e.target.value) : null })}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
                   placeholder="Leave empty for unlimited"
                   min="0"
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Maximum data transfer limit in gigabytes
+                  Maximum data transfer limit in megabytes
                 </p>
               </div>
 

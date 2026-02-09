@@ -107,7 +107,8 @@ model VPNUser {
   totalBytesReceived  BigInt    @default(0)  // All-time cumulative received
   totalBytesSent      BigInt    @default(0)  // All-time cumulative sent
   remainingDays       Int?      // Days until expiration
-  remainingTrafficGB  Float?    // Remaining traffic in GB
+  remainingTrafficBytes BigInt? // Remaining traffic in bytes
+  lastDayCheck        DateTime? // Last time remainingDays was decremented
   connectedAt         DateTime?
   isConnected         Boolean   @default(false)
   isEnabled           Boolean   @default(true)

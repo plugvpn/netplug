@@ -97,6 +97,7 @@ export default function WireguardConfigPage() {
   const [publicKeyCopied, setPublicKeyCopied] = useState(false);
 
   useEffect(() => {
+    document.title = "Wireguard | NetPlug Dashboard";
     fetchConfig();
   }, []);
 
@@ -198,7 +199,16 @@ export default function WireguardConfigPage() {
   if (!config) {
     return (
       <div className="h-full">
-        <PageHeader title="Wireguard Configuration" />
+        <PageHeader title="Wireguard">
+          <button
+            onClick={fetchConfig}
+            disabled={loading}
+            className="flex items-center gap-2 rounded border border-gray-300 px-4 py-1.5 text-sm font-normal text-gray-600 transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:border-gray-500"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </PageHeader>
         <div className="flex items-center justify-center py-12">
           <div className="text-gray-600 dark:text-gray-400">WireGuard is not configured yet.</div>
         </div>
@@ -208,12 +218,21 @@ export default function WireguardConfigPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Wireguard Configuration" />
+      <PageHeader title="Wireguard">
+        <button
+          onClick={fetchConfig}
+          disabled={loading}
+          className="flex items-center gap-2 rounded border border-gray-300 px-4 py-1.5 text-sm font-normal text-gray-600 transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:border-gray-500"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </PageHeader>
 
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">WireGuard Configuration</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Wireguard</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
               Configure and manage your WireGuard VPN server settings
             </p>

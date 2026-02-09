@@ -114,10 +114,7 @@ export function ActiveConnectionsTable() {
                 User
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                VPN IP
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Endpoint
+                Public IP
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Server
@@ -152,11 +149,6 @@ export function ActiveConnectionsTable() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900 dark:text-gray-100 font-mono">
-                    {connection.ipAddress}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900 dark:text-gray-100 font-mono">
                     {connection.endpoint || 'N/A'}
                   </div>
                 </td>
@@ -181,13 +173,13 @@ export function ActiveConnectionsTable() {
                       <HardDrive className="h-4 w-4 mr-1 text-blue-500" strokeWidth={1.5} />
                       <span className="text-gray-500 dark:text-gray-400 text-xs mr-1">↓</span>
                       <span className="text-gray-900 dark:text-gray-100">
-                        {formatBytes(connection.bytesReceived)}
+                        {formatBytes(connection.bytesSent)}
                       </span>
                     </div>
                     <div className="flex items-center text-sm">
                       <span className="text-gray-500 dark:text-gray-400 text-xs mr-1">↑</span>
                       <span className="text-gray-900 dark:text-gray-100">
-                        {formatBytes(connection.bytesSent)}
+                        {formatBytes(connection.bytesReceived)}
                       </span>
                     </div>
                   </div>

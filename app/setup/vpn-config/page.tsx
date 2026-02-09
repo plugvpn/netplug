@@ -65,6 +65,8 @@ export default function VPNConfigPage() {
 
   // Generate keys on mount if not already set
   useEffect(() => {
+    document.title = "VPN Setup | NetPlug Dashboard";
+
     if (!keyPair.privateKey) {
       generateKeys()
     }

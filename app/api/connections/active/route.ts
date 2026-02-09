@@ -26,7 +26,7 @@ export async function GET() {
     })
 
     // Format the data for the frontend
-    // Calculate all-time usage: cumulative total + current session
+    // Show only current session usage (not all-time)
     const formattedConnections = activeConnections.map(user => {
       // Type assertion for fields that exist in DB but may not be in generated types yet
       const userData = user as any;
@@ -37,8 +37,8 @@ export async function GET() {
         ipAddress: user.ipAddress || 'N/A',
         endpoint: userData.endpoint || null,
         lastHandshake: userData.lastHandshake?.toISOString() || null,
-        bytesReceived: ((userData.totalBytesReceived || BigInt(0)) + user.bytesReceived).toString(),
-        bytesSent: ((userData.totalBytesSent || BigInt(0)) + user.bytesSent).toString(),
+        bytesReceived: user.bytesReceived.toString(),
+        bytesSent: user.bytesSent.toString(),
         serverName: user.server.name,
         protocol: user.server.protocol,
         serverHost: user.server.host,

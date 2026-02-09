@@ -1,27 +1,24 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { isSetupComplete } from "@/lib/setup";
+import { auth } from "@/lib/auth";
+import type { Metadata } from "next";
 
-// Force dynamic rendering since we need to check database and cookies
+// Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
+export const metadata: Metadata = {
+  title: "NetPlug Dashboard",
+  description: "VPN Server Management Dashboard",
+};
+
 export default async function Home() {
-  // Check if setup is complete in database
-  const setupComplete = await isSetupComplete();
+  // Check if user is authenticated
+  const session = await auth();
 
-  // If setup is complete but cookie is missing, redirect to a page that will set it
-  if (setupComplete) {
-    const cookieStore = await cookies();
-    const setupCookie = cookieStore.get('setup-complete');
-
-    if (!setupCookie || setupCookie.value !== 'true') {
-      // Cookie is missing, set it via API call then redirect
-      redirect("/api/setup/verify");
-    }
-
+  if (session) {
+    // User is logged in, redirect to dashboard
     redirect("/dashboard");
   }
 
-  // Setup not complete, redirect to setup wizard
-  redirect("/setup");
+  // User not logged in, redirect to login page
+  redirect("/login");
 }

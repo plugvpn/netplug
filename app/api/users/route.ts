@@ -32,7 +32,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { username, serverId, commonName, ipAddress, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficGB } = body;
+    const { username, serverId, commonName, ipAddress, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficBytes } = body;
 
     // Validate required fields
     if (!username || !serverId) {
@@ -182,7 +182,7 @@ export async function POST(request: Request) {
         publicKey: publicKey,
         presharedKey: presharedKey,
         remainingDays: remainingDays || null,
-        remainingTrafficGB: remainingTrafficGB || null,
+        remainingTrafficBytes: remainingTrafficBytes ? BigInt(remainingTrafficBytes) : null,
         isEnabled: true,
       },
       include: {

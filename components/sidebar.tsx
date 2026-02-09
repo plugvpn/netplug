@@ -11,6 +11,8 @@ import {
   LogOut,
   Network,
   Shield,
+  FileText,
+  Link2,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
@@ -21,9 +23,11 @@ type NavigationItem = {
 };
 
 const navigation: NavigationItem[] = [
-  { name: "Status", href: "/dashboard", icon: Activity },
+  { name: "Overview", href: "/dashboard", icon: Activity },
+  { name: "Connections", href: "/dashboard/connections", icon: Link2 },
+  { name: "Activity", href: "/dashboard/activity", icon: FileText },
   { name: "Users", href: "/dashboard/users", icon: Users },
-  { name: "Wireguard Configuration", href: "/dashboard/setup/wireguard", icon: Server },
+  { name: "Wireguard", href: "/dashboard/wireguard", icon: Server },
   { name: "Routing", href: "/dashboard/setup/routing", icon: Network },
   { name: "Obfuscation", href: "/dashboard/obfuscation", icon: Shield },
 ];

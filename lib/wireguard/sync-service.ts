@@ -318,6 +318,7 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
     const now = Math.floor(Date.now() / 1000);
     let connectedCount = 0;
     let disconnectedCount = 0;
+    let shouldReloadConfig = false; // Track if we need to reload WireGuard config
 
     // Update each user's connection status
     for (const user of users) {
@@ -338,9 +339,8 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
         const shouldUpdateConnectedAt = isConnected && !user.isConnected;
         const newConnectedAt = shouldUpdateConnectedAt ? new Date() : user.connectedAt;
 
-        // Extract IP address from endpoint (format: "IP:port" or just "IP")
-        // Store only the IP address part, not the port
-        const endpointIp = peer.endpoint ? peer.endpoint.split(':')[0] : null;
+        // Store full endpoint with port (format: "IP:port" or just "IP")
+        const endpointFull = peer.endpoint || null;
 
         // Convert Unix timestamp to Date (latestHandshake is in seconds)
         const lastHandshakeDate = peer.latestHandshake > 0
@@ -385,13 +385,87 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
           console.log(`[WireGuard] ${user.username}: Marking as newly connected, setting connectedAt to now`);
         }
 
+        // Check and decrement remaining days (daily)
+        let newRemainingDays = user.remainingDays;
+        let newLastDayCheck = user.lastDayCheck;
+
+        if (user.remainingDays !== null && user.remainingDays > 0) {
+          const currentDate = new Date();
+          const lastCheck = user.lastDayCheck ? new Date(user.lastDayCheck) : null;
+
+          // Check if a day has passed since last check
+          // If lastDayCheck is null, initialize it to today
+          if (!lastCheck) {
+            newLastDayCheck = currentDate;
+            console.log(`[WireGuard] ${user.username}: Initializing day counter (${user.remainingDays} days remaining)`);
+          } else {
+            const daysSinceLastCheck = Math.floor((currentDate.getTime() - lastCheck.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (daysSinceLastCheck >= 1) {
+              // Decrement by the number of days that have passed
+              newRemainingDays = Math.max(0, user.remainingDays - daysSinceLastCheck);
+              newLastDayCheck = currentDate;
+              console.log(`[WireGuard] ${user.username}: ${daysSinceLastCheck} day(s) passed, decremented remaining days from ${user.remainingDays} to ${newRemainingDays}`);
+            }
+          }
+        }
+
+        // Calculate traffic quota usage
+        let newRemainingTrafficBytes = user.remainingTrafficBytes;
+        let shouldDisableUser = false;
+
+        if (user.remainingTrafficBytes !== null) {
+          // User has a traffic quota - calculate total usage increase
+          const previousTotalUsage = user.totalBytesReceived + user.totalBytesSent + user.bytesReceived + user.bytesSent;
+          const currentTotalUsage = newTotalBytesReceived + newTotalBytesSent + peer.transferRx + peer.transferTx;
+          const usageIncrease = currentTotalUsage - previousTotalUsage;
+
+          // Subtract usage from remaining traffic
+          newRemainingTrafficBytes = user.remainingTrafficBytes - usageIncrease;
+
+          // Check if quota exceeded (should not go below 0)
+          if (newRemainingTrafficBytes <= BigInt(0)) {
+            newRemainingTrafficBytes = BigInt(0);
+            shouldDisableUser = true;
+            console.log(`[WireGuard] ${user.username}: Traffic quota exceeded, disabling user`);
+          } else {
+            console.log(`[WireGuard] ${user.username}: Remaining traffic: ${Number(newRemainingTrafficBytes) / (1024 * 1024)} MB`);
+          }
+        }
+
+        // Check if remaining days limit reached
+        if (newRemainingDays !== null && newRemainingDays <= 0) {
+          shouldDisableUser = true;
+          console.log(`[WireGuard] ${user.username}: Time limit expired (${newRemainingDays} days remaining), disabling user`);
+        }
+
+        // Check if user should be re-enabled (quota was increased manually)
+        let shouldEnableUser = false;
+        if (!user.isEnabled && !shouldDisableUser) {
+          // User is currently disabled but has quota available
+          const hasTrafficQuota = newRemainingTrafficBytes === null || newRemainingTrafficBytes > BigInt(0);
+          const hasDaysQuota = newRemainingDays === null || newRemainingDays > 0;
+
+          if (hasTrafficQuota && hasDaysQuota) {
+            shouldEnableUser = true;
+            console.log(`[WireGuard] ${user.username}: Quota available, re-enabling user`);
+          }
+        }
+
+        // Track if we're disabling or enabling a user (to trigger config reload)
+        if (shouldDisableUser && user.isEnabled) {
+          shouldReloadConfig = true;
+        } else if (shouldEnableUser && !user.isEnabled) {
+          shouldReloadConfig = true; // Reuse same flag to trigger config reload
+        }
+
         // Always sync the data from WireGuard to database
         await prisma.vPNUser.update({
           where: { id: user.id },
           data: {
             isConnected,
             connectedAt: newConnectedAt,
-            endpoint: endpointIp,
+            endpoint: endpointFull,
             lastHandshake: lastHandshakeDate,
             bytesReceived: peer.transferRx,
             bytesSent: peer.transferTx,
@@ -401,6 +475,10 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
             bytesSentRate,
             totalBytesReceived: newTotalBytesReceived,
             totalBytesSent: newTotalBytesSent,
+            remainingDays: newRemainingDays,
+            remainingTrafficBytes: newRemainingTrafficBytes,
+            lastDayCheck: newLastDayCheck,
+            isEnabled: shouldDisableUser ? false : shouldEnableUser ? true : user.isEnabled, // Disable if quota exceeded, enable if quota restored
           },
         });
 
@@ -434,6 +512,17 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
 
     console.log(`[WireGuard] Sync complete: ${connectedCount} online, ${disconnectedCount} offline`);
 
+    // If any user was disabled or enabled, reload WireGuard config to update peers
+    if (shouldReloadConfig) {
+      console.log('[WireGuard] User status changed (quota/time limit changes), reloading config...');
+      const reloaded = await reloadWireGuardConfig(interfaceName);
+      if (reloaded) {
+        console.log('[WireGuard] Config reloaded successfully, peer list updated');
+      } else {
+        console.error('[WireGuard] Failed to reload config after user status change');
+      }
+    }
+
     // Record bandwidth snapshot for time series chart
     try {
       // Calculate total bandwidth rate from all connected users
@@ -454,9 +543,12 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
       let totalDownloadRate = BigInt(0);
       let totalUploadRate = BigInt(0);
 
+      // From user perspective:
+      // - Download = data sent TO users (bytesSentRate)
+      // - Upload = data received FROM users (bytesReceivedRate)
       for (const user of connectedUsers) {
-        totalDownloadRate += user.bytesReceivedRate;
-        totalUploadRate += user.bytesSentRate;
+        totalDownloadRate += user.bytesSentRate;
+        totalUploadRate += user.bytesReceivedRate;
       }
 
       // Store snapshot in database

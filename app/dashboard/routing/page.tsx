@@ -1,9 +1,14 @@
 "use client";
 
+import { useEffect } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Network } from "lucide-react";
 
 export default function RoutingPage() {
+  useEffect(() => {
+    document.title = "Routing | NetPlug Dashboard";
+  }, []);
+
   return (
     <div className="h-full">
       <PageHeader title="Routing" />

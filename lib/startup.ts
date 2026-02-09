@@ -1,11 +1,17 @@
-import { initializeWireGuard, startWireGuardSyncService } from './wireguard/sync-service';
+import { initializeWireGuard, startWireGuardSyncService, bringDownWireGuard } from './wireguard/sync-service';
 import { existsSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { execSync } from 'child_process';
+import { prisma } from './prisma';
+import { hashPassword } from './password';
+import { randomBytes } from 'crypto';
 
 // Global reference to WireGuard sync interval
 let wireGuardSyncInterval: NodeJS.Timeout | null = null;
+
+// Track if cleanup has been executed
+let cleanupExecuted = false;
 
 /**
  * Initialize database if it doesn't exist
@@ -63,6 +69,106 @@ async function initializeDatabase() {
 }
 
 /**
+ * Generate a random password
+ */
+function generatePassword(length: number = 16): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*';
+  const password = randomBytes(length)
+    .toString('base64')
+    .slice(0, length)
+    .split('')
+    .map((_, i) => chars[randomBytes(1)[0] % chars.length])
+    .join('');
+  return password;
+}
+
+/**
+ * Create default admin user if none exists
+ */
+async function ensureAdminExists() {
+  try {
+    // Check if any admin user exists
+    const adminCount = await prisma.user.count({
+      where: { role: 'admin' },
+    });
+
+    if (adminCount > 0) {
+      console.log('[Startup] ✓ Admin user already exists');
+      return;
+    }
+
+    console.log('[Startup] No admin user found, creating default admin...');
+
+    // Generate random password
+    const username = 'admin';
+    const password = generatePassword(16);
+    const hashedPassword = await hashPassword(password);
+
+    // Create admin user
+    await prisma.user.create({
+      data: {
+        username,
+        password: hashedPassword,
+        role: 'admin',
+      },
+    });
+
+    // Display credentials prominently in the logs
+    console.log('\n');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('  DEFAULT ADMIN CREDENTIALS CREATED');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
+    console.log('  Username: ' + username);
+    console.log('  Password: ' + password);
+    console.log('');
+    console.log('  ⚠️  IMPORTANT: Save these credentials securely!');
+    console.log('  ⚠️  Change the password after first login!');
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('\n');
+  } catch (error) {
+    console.error('[Startup] Failed to create admin user:', error);
+  }
+}
+
+/**
+ * Cleanup function to run when the server stops
+ */
+async function cleanup() {
+  if (cleanupExecuted) {
+    return;
+  }
+  cleanupExecuted = true;
+
+  console.log('\n[Shutdown] Cleaning up...');
+
+  try {
+    // Stop sync service
+    if (wireGuardSyncInterval) {
+      clearInterval(wireGuardSyncInterval);
+      wireGuardSyncInterval = null;
+      console.log('[Shutdown] ✓ Stopped WireGuard sync service');
+    }
+
+    // Bring down WireGuard interface
+    console.log('[Shutdown] Bringing down WireGuard interface...');
+    const success = await bringDownWireGuard('wg0');
+    if (success) {
+      console.log('[Shutdown] ✓ WireGuard interface brought down');
+    }
+
+    // Disconnect Prisma
+    await prisma.$disconnect();
+    console.log('[Shutdown] ✓ Database disconnected');
+  } catch (error) {
+    console.error('[Shutdown] Error during cleanup:', error);
+  }
+
+  console.log('[Shutdown] Cleanup completed\n');
+}
+
+/**
  * Run startup tasks when the server starts
  */
 export async function runStartupTasks() {
@@ -81,6 +187,10 @@ export async function runStartupTasks() {
       return;
     }
 
+    // Ensure admin user exists
+    console.log('[Startup] Checking admin user...');
+    await ensureAdminExists();
+
     // Initialize WireGuard
     console.log('[Startup] Initializing WireGuard...');
     await initializeWireGuard('wg0');
@@ -90,6 +200,23 @@ export async function runStartupTasks() {
       clearInterval(wireGuardSyncInterval);
     }
     wireGuardSyncInterval = startWireGuardSyncService('wg0', 10000);
+
+    // Register cleanup handlers
+    process.on('SIGINT', async () => {
+      console.log('\n[Shutdown] Received SIGINT (Ctrl+C)');
+      await cleanup();
+      process.exit(0);
+    });
+
+    process.on('SIGTERM', async () => {
+      console.log('\n[Shutdown] Received SIGTERM');
+      await cleanup();
+      process.exit(0);
+    });
+
+    process.on('beforeExit', async () => {
+      await cleanup();
+    });
   } catch (error) {
     console.error('[Startup] Error during startup tasks:', error);
   }

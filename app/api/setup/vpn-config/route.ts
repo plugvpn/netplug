@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { markSetupComplete, isSetupComplete } from '@/lib/setup'
+import { initializeWireGuard } from '@/lib/wireguard/sync-service'
+import { writeWireGuardConfig } from '@/lib/wireguard/config-generator'
 import path from 'path'
 
 export async function POST(request: NextRequest) {
@@ -116,6 +118,28 @@ export async function POST(request: NextRequest) {
           publicKey: serverPublicKey,
         },
       })
+
+      console.log('[Setup] WireGuard server configuration saved')
+
+      // Generate and write the wg0.conf file
+      console.log('[Setup] Generating WireGuard configuration file...')
+      const configWritten = await writeWireGuardConfig()
+
+      if (!configWritten) {
+        console.error('[Setup] Failed to write WireGuard configuration file')
+      } else {
+        console.log('[Setup] ✓ WireGuard configuration file created')
+
+        // Bring up the WireGuard interface
+        console.log('[Setup] Bringing up WireGuard interface...')
+        try {
+          await initializeWireGuard('wg0')
+          console.log('[Setup] ✓ WireGuard interface is up and running')
+        } catch (error) {
+          console.error('[Setup] Failed to bring up WireGuard interface:', error)
+          console.warn('[Setup] You may need to run "sudo wg-quick up wg0" manually')
+        }
+      }
     } finally {
       await prisma.$disconnect()
     }

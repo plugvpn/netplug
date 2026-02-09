@@ -109,39 +109,39 @@ export function ActivityLog() {
     });
   };
 
-  // Get level badge styling
+  // Get level badge styling - Grafana style
   const getLevelBadge = (level: string) => {
     if (level === 'stderr') {
       return (
-        <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-500/20">
-          stderr
+        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-500/20 text-red-400 border border-red-500/30">
+          ERROR
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/10 dark:bg-blue-500/10 dark:text-blue-400 dark:ring-blue-500/20">
-        stdout
+      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+        INFO
       </span>
     );
   };
 
-  // Get category badge styling
+  // Get category badge styling - Grafana style
   const getCategoryBadge = (category?: string) => {
     if (!category) return null;
 
     const colors: Record<string, string> = {
-      Startup: 'bg-purple-50 text-purple-700 ring-purple-600/10 dark:bg-purple-500/10 dark:text-purple-400 dark:ring-purple-500/20',
-      WireGuard: 'bg-emerald-50 text-emerald-700 ring-emerald-600/10 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/20',
-      API: 'bg-indigo-50 text-indigo-700 ring-indigo-600/10 dark:bg-indigo-500/10 dark:text-indigo-400 dark:ring-indigo-500/20',
-      LogCapture: 'bg-gray-50 text-gray-700 ring-gray-600/10 dark:bg-gray-500/10 dark:text-gray-400 dark:ring-gray-500/20',
-      Database: 'bg-yellow-50 text-yellow-700 ring-yellow-600/10 dark:bg-yellow-500/10 dark:text-yellow-400 dark:ring-yellow-500/20',
+      Startup: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+      WireGuard: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      API: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+      LogCapture: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+      Database: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
     };
 
-    const colorClass = colors[category] || 'bg-gray-50 text-gray-700 ring-gray-600/10 dark:bg-gray-500/10 dark:text-gray-400 dark:ring-gray-500/20';
+    const colorClass = colors[category] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
 
     return (
       <span
-        className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${colorClass}`}
+        className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium border ${colorClass}`}
       >
         {category}
       </span>
@@ -150,65 +150,65 @@ export function ActivityLog() {
 
   if (loading && logs.length === 0) {
     return (
-      <div className="flex h-96 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex h-96 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 shadow-lg">
         <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-emerald-600 border-r-transparent"></div>
-          <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Loading activity logs...</p>
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
+          <p className="mt-3 text-sm text-gray-400">Loading activity logs...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Stats Bar */}
+    <div className="h-full flex flex-col space-y-4">
+      {/* Stats Bar - Grafana Style */}
       {stats && (
-        <div className="grid grid-cols-4 gap-4">
-          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-sm text-gray-500 dark:text-gray-400">Total Logs</div>
-            <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{stats.total}</div>
+        <div className="grid grid-cols-4 gap-4 flex-shrink-0">
+          <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-lg">
+            <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">Total Logs</div>
+            <div className="mt-2 text-2xl font-semibold text-gray-100">{stats.total}</div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-sm text-gray-500 dark:text-gray-400">Stdout</div>
-            <div className="mt-1 text-2xl font-semibold text-blue-600 dark:text-blue-400">{stats.stdout}</div>
+          <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-lg">
+            <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">Info</div>
+            <div className="mt-2 text-2xl font-semibold text-blue-400">{stats.stdout}</div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-sm text-gray-500 dark:text-gray-400">Stderr</div>
-            <div className="mt-1 text-2xl font-semibold text-red-600 dark:text-red-400">{stats.stderr}</div>
+          <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-lg">
+            <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">Errors</div>
+            <div className="mt-2 text-2xl font-semibold text-red-400">{stats.stderr}</div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-sm text-gray-500 dark:text-gray-400">Categories</div>
-            <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">
+          <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-lg">
+            <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">Categories</div>
+            <div className="mt-2 text-2xl font-semibold text-gray-100">
               {stats.categories.length}
             </div>
           </div>
         </div>
       )}
 
-      {/* Controls */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+      {/* Controls - Grafana Style */}
+      <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 flex-shrink-0 shadow-lg">
         <div className="flex flex-wrap items-center gap-4">
           {/* Level Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Level</label>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Level</label>
             <select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value as any)}
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+              className="rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="all">All</option>
-              <option value="stdout">Stdout</option>
-              <option value="stderr">Stderr</option>
+              <option value="stdout">Info</option>
+              <option value="stderr">Errors</option>
             </select>
           </div>
 
           {/* Category Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Category</label>
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+              className="rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="all">All Categories</option>
               {stats?.categories.map((cat) => (
@@ -221,13 +221,13 @@ export function ActivityLog() {
 
           {/* Search */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search</label>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Search</label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search logs..."
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
+              className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
@@ -240,8 +240,8 @@ export function ActivityLog() {
                 onChange={(e) => setAutoRefresh(e.target.checked)}
                 className="peer sr-only"
               />
-              <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500 peer-focus:ring-offset-2 dark:bg-gray-700 dark:after:border-gray-600 dark:peer-focus:ring-offset-gray-900"></div>
-              <span className="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300">Auto-refresh</span>
+              <div className="peer h-6 w-11 rounded-full bg-gray-700 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-600 after:bg-gray-400 after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-checked:after:bg-white peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500"></div>
+              <span className="ml-3 text-sm font-medium text-gray-300">Auto-refresh</span>
             </label>
           </div>
 
@@ -249,7 +249,7 @@ export function ActivityLog() {
           <div className="pt-6">
             <button
               onClick={clearLogs}
-              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+              className="rounded bg-red-600/90 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
             >
               Clear Logs
             </button>
@@ -260,7 +260,7 @@ export function ActivityLog() {
             <button
               onClick={fetchLogs}
               disabled={loading}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-50 dark:focus:ring-offset-gray-900"
+              className="rounded bg-blue-600/90 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
             >
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
@@ -268,24 +268,24 @@ export function ActivityLog() {
         </div>
       </div>
 
-      {/* Error Message */}
+      {/* Error Message - Grafana Style */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/20">
-          <p className="text-sm text-red-800 dark:text-red-400">Error: {error}</p>
+        <div className="rounded-lg border border-red-500/30 bg-red-950/40 p-4 flex-shrink-0 shadow-lg">
+          <p className="text-sm text-red-400 font-medium">Error: {error}</p>
         </div>
       )}
 
-      {/* Log Display */}
-      <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-        <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+      {/* Log Display - Grafana Style */}
+      <div className="rounded-lg border border-gray-700 bg-gray-900 flex-1 flex flex-col min-h-0 shadow-lg">
+        <div className="border-b border-gray-700 px-4 py-3 flex-shrink-0 bg-gray-800/50">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              Activity Logs {logs.length > 0 && `(${logs.length})`}
+            <h3 className="text-sm font-medium text-gray-200">
+              Activity Logs {logs.length > 0 && <span className="text-gray-400">({logs.length})</span>}
             </h3>
             {!autoScroll && (
               <button
                 onClick={() => setAutoScroll(true)}
-                className="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
               >
                 Jump to bottom
               </button>
@@ -296,27 +296,30 @@ export function ActivityLog() {
         <div
           ref={logContainerRef}
           onScroll={handleScroll}
-          className="h-[600px] overflow-y-auto font-mono text-xs"
+          className="flex-1 overflow-y-auto font-mono text-xs bg-gray-950 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-900 [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:hover:bg-gray-600"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #111827' }}
         >
           {logs.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
+            <div className="flex h-full items-center justify-center text-gray-500">
               No logs to display
             </div>
           ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            <div>
               {logs.map((log) => (
                 <div
                   key={log.id}
-                  className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
-                    log.level === 'stderr' ? 'bg-red-50/30 dark:bg-red-900/10' : ''
+                  className={`px-4 py-2 border-l-2 hover:bg-gray-900/50 transition-colors ${
+                    log.level === 'stderr'
+                      ? 'border-l-red-500 bg-red-950/20'
+                      : 'border-l-transparent hover:border-l-blue-500/30'
                   }`}
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    <span className="text-gray-500 dark:text-gray-400">{formatTime(log.timestamp)}</span>
+                    <span className="text-gray-500 text-[11px]">{formatTime(log.timestamp)}</span>
                     {getLevelBadge(log.level)}
                     {getCategoryBadge(log.category)}
                   </div>
-                  <pre className="whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100">
+                  <pre className="whitespace-pre-wrap break-words text-gray-300 leading-relaxed">
                     {log.message}
                   </pre>
                 </div>
