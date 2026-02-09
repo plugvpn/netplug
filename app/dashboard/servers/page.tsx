@@ -47,7 +47,7 @@ export default function ServersPage() {
       setServers([
         {
           id: 'openvpn',
-          name: 'OpenVPN Server',
+          name: 'VPN Server',
           protocol: 'openvpn',
           host: 'vpn1.netplug.io',
           port: 1194,
@@ -308,7 +308,7 @@ export default function ServersPage() {
                   Edit Server Configuration
                 </h2>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Update {editingServer.protocol === 'openvpn' ? 'OpenVPN' : 'WireGuard'} server settings
+                  Update {editingServer.protocol === 'openvpn' ? 'VPN' : 'WireGuard'} server settings
                 </p>
               </div>
               <button
@@ -335,7 +335,7 @@ export default function ServersPage() {
                       <>
                         <Shield className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
                         <span className="font-mono text-sm font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
-                          OpenVPN
+                          VPN
                         </span>
                       </>
                     ) : (
@@ -350,7 +350,7 @@ export default function ServersPage() {
                 </div>
               </div>
 
-              {/* OpenVPN-specific fields */}
+              {/* VPN-specific fields */}
               {editingServer.protocol === 'openvpn' && (
                 <>
                   <div className="grid grid-cols-3 gap-4">

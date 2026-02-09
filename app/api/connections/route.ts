@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   // TODO: Replace with actual VPN server connection query
-  // Example: Query OpenVPN management interface for active connections
+  // Example: Query VPN management interface for active connections
   // const connections = await getActiveConnections();
 
   return NextResponse.json(mockConnections);

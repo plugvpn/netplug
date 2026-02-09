@@ -16,6 +16,7 @@ export async function GET() {
     const platform = os.platform()
     const release = os.release()
     const type = os.type()
+    const uptime = process.uptime() // Server process uptime in seconds
 
     // Get network interfaces to find server address
     const networkInterfaces = os.networkInterfaces()
@@ -75,6 +76,7 @@ export async function GET() {
       version,
       osName,
       hostname,
+      uptime,
       acceptingConnectionsOn: 'all',
       ports: ports.length > 0 ? ports.join(', ') : 'tcp/443, udp/1194',
     })

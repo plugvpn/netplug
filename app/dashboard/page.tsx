@@ -21,11 +21,26 @@ function formatBytes(bytes: string): string {
   return `${bytes} B`;
 }
 
+// Helper function to format uptime
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  const parts = [];
+  if (days > 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+  if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
+  if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
+
+  return parts.length > 0 ? parts.join(', ') : 'Less than a minute';
+}
+
 interface SystemInfo {
   serverAddress: string;
   version: string;
   osName: string;
   hostname: string;
+  uptime: number;
   acceptingConnectionsOn: string;
   ports: string;
 }
@@ -51,6 +66,8 @@ export default function DashboardPage() {
   const [dataTransferStats, setDataTransferStats] = useState<DataTransferStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [serverStartTime, setServerStartTime] = useState<number | null>(null);
+  const [currentUptime, setCurrentUptime] = useState<number>(0);
 
   const fetchData = async () => {
     try {
@@ -63,6 +80,13 @@ export default function DashboardPage() {
       if (systemResponse.ok) {
         const data = await systemResponse.json();
         setSystemInfo(data);
+
+        // Calculate server start time from uptime
+        if (data.uptime) {
+          const startTime = Date.now() - (data.uptime * 1000);
+          setServerStartTime(startTime);
+          setCurrentUptime(data.uptime);
+        }
       }
 
       if (connectionResponse.ok) {
@@ -89,6 +113,18 @@ export default function DashboardPage() {
     document.title = "Overview | NetPlug Dashboard";
   }, []);
 
+  // Live uptime counter - updates every second
+  useEffect(() => {
+    if (!serverStartTime) return;
+
+    const interval = setInterval(() => {
+      const elapsedSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+      setCurrentUptime(elapsedSeconds);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [serverStartTime]);
+
   useEffect(() => {
     async function initialFetch() {
       setLoading(true);
@@ -110,7 +146,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Synced from WireGuard every 10s</span>
+            <span>Synced every 10s</span>
           </div>
           <button
             onClick={handleRefresh}
@@ -239,41 +275,43 @@ export default function DashboardPage() {
                   <BandwidthChart mode="daily" />
                 </div>
 
-                {/* Total Transfer Stats */}
-                <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <HardDrive className="h-5 w-5 text-gray-600 dark:text-gray-400" strokeWidth={1.5} />
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Total Transfer (All Time)</h3>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ArrowDownCircle className="h-4 w-4 text-blue-500" strokeWidth={1.5} />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">Downloaded</span>
-                      </div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {formatBytes(dataTransferStats.total.sent)}
-                      </span>
+                {/* All-Time Transfer Stats */}
+                {dataTransferStats && (
+                  <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <HardDrive className="h-5 w-5 text-gray-600 dark:text-gray-400" strokeWidth={1.5} />
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Total Transfer (All Time)</h3>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ArrowUpCircle className="h-4 w-4 text-emerald-500" strokeWidth={1.5} />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">Uploaded</span>
-                      </div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {formatBytes(dataTransferStats.total.received)}
-                      </span>
-                    </div>
-                    <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Total</span>
-                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {formatBytes(dataTransferStats.total.combined)}
+                        <div className="flex items-center gap-2">
+                          <ArrowDownCircle className="h-4 w-4 text-blue-500" strokeWidth={1.5} />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Downloaded</span>
+                        </div>
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {formatBytes(dataTransferStats.total.sent)}
                         </span>
                       </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ArrowUpCircle className="h-4 w-4 text-emerald-500" strokeWidth={1.5} />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Uploaded</span>
+                        </div>
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {formatBytes(dataTransferStats.total.received)}
+                        </span>
+                      </div>
+                      <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Total</span>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {formatBytes(dataTransferStats.total.combined)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -314,6 +352,13 @@ export default function DashboardPage() {
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-700 dark:text-gray-300">OS hostname</span>
                   <span className="text-sm font-mono text-xs text-gray-900 dark:text-gray-100">{systemInfo.hostname}</span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Uptime</span>
+                  <span className="text-sm font-normal text-gray-900 dark:text-gray-100">
+                    {serverStartTime ? formatUptime(currentUptime) : formatUptime(systemInfo.uptime)}
+                  </span>
                 </div>
 
                 <div className="flex justify-between">

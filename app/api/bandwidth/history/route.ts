@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const hours = parseInt(searchParams.get('hours') || '24', 10);
 
     if (mode === 'daily') {
-      // Get current month data
+      // Get current month data (using local timezone)
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of month
@@ -33,20 +33,18 @@ export async function GET(request: Request) {
       });
 
       // Aggregate data into daily buckets (total bytes per day)
-      const dailyData = new Map<string, { downloadTotal: number, uploadTotal: number, count: number, date: Date }>();
+      const dailyData = new Map<string, { downloadTotal: number, uploadTotal: number, count: number }>();
 
       for (const snapshot of snapshots) {
-        // Round timestamp down to the day
-        const dayKey = new Date(snapshot.timestamp);
-        dayKey.setHours(0, 0, 0, 0);
-        const dayKeyStr = dayKey.toISOString();
+        // Get the local date as YYYY-MM-DD string
+        const date = new Date(snapshot.timestamp);
+        const dayKeyStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
         if (!dailyData.has(dayKeyStr)) {
           dailyData.set(dayKeyStr, {
             downloadTotal: 0,
             uploadTotal: 0,
             count: 0,
-            date: dayKey,
           });
         }
 
@@ -63,20 +61,19 @@ export async function GET(request: Request) {
 
       for (let day = 1; day <= daysInMonth; day++) {
         const dayDate = new Date(now.getFullYear(), now.getMonth(), day);
-        dayDate.setHours(0, 0, 0, 0);
-        const dayKeyStr = dayDate.toISOString();
+        const dayKeyStr = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
 
         const bucket = dailyData.get(dayKeyStr);
 
         formattedHistory.push({
           day: day,
-          timestamp: dayDate.toISOString(),
+          timestamp: dayKeyStr,
           downloadTotal: bucket ? bucket.downloadTotal : 0,
           uploadTotal: bucket ? bucket.uploadTotal : 0,
           combinedTotal: bucket ? (bucket.downloadTotal + bucket.uploadTotal) : 0,
         });
 
-        // Stop at current day
+        // Stop at current day (local timezone)
         if (day === now.getDate()) break;
       }
 
@@ -115,7 +112,7 @@ export async function GET(request: Request) {
     const hourlyData = new Map<string, { downloadRates: number[], uploadRates: number[], timestamp: Date }>();
 
     for (const snapshot of snapshots) {
-      // Round timestamp down to the hour
+      // Round timestamp down to the hour (local timezone)
       const hourKey = new Date(snapshot.timestamp);
       hourKey.setMinutes(0, 0, 0);
       const hourKeyStr = hourKey.toISOString();

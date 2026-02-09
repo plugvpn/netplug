@@ -207,20 +207,20 @@ export function BandwidthChart({ hours = 24, mode = 'hourly' }: BandwidthChartPr
               <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+          <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" opacity={0.5} />
           <XAxis
             dataKey={xAxisKey}
             tickFormatter={isDaily ? undefined : formatTime}
-            tick={{ fontSize: 12, fill: 'currentColor' }}
-            className="text-gray-500 dark:text-gray-400"
-            stroke="currentColor"
-            label={isDaily ? { value: 'Day of Month', position: 'insideBottom', offset: -5, className: 'text-gray-500 dark:text-gray-400' } : undefined}
+            tick={{ fontSize: 12, fill: '#9ca3af' }}
+            className="text-gray-400 dark:text-gray-500"
+            stroke="#d1d5db"
+            label={isDaily ? { value: 'Day of Month', position: 'insideBottom', offset: -5, fill: '#9ca3af' } : undefined}
           />
           <YAxis
             tickFormatter={(value) => isDaily ? formatBytes(value) : formatBytesPerSecond(value)}
-            tick={{ fontSize: 12, fill: 'currentColor' }}
-            className="text-gray-500 dark:text-gray-400"
-            stroke="currentColor"
+            tick={{ fontSize: 12, fill: '#9ca3af' }}
+            className="text-gray-400 dark:text-gray-500"
+            stroke="#d1d5db"
             width={80}
           />
           <Tooltip content={<CustomTooltip />} />
@@ -228,7 +228,7 @@ export function BandwidthChart({ hours = 24, mode = 'hourly' }: BandwidthChartPr
             wrapperStyle={{ fontSize: '14px' }}
             iconType="circle"
             formatter={(value) => (
-              <span className="text-gray-700 dark:text-gray-300">
+              <span className="text-gray-500 dark:text-gray-400">
                 {value === downloadKey ? 'Download' : 'Upload'}
               </span>
             )}

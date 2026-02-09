@@ -14,17 +14,36 @@ datasource db {
 model SystemConfig {
   id                String   @id @default(cuid())
   isSetupComplete   Boolean  @default(false)
-  vpnConfiguration  Json?    // Stores both OpenVPN and WireGuard configs
+  vpnConfiguration  Json?    // Stores VPN and WireGuard configs
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+// SMTP configuration for sending emails
+model SmtpConfig {
+  id          String   @id @default(cuid())
+  host        String
+  port        Int
+  username    String
+  password    String   // Encrypted
+  encryption  String   @default("TLS")  // TLS, SSL, or NONE
+  fromName    String
+  fromEmail   String
+  enabled     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // Admin users with bcrypt-hashed passwords
 model User {
   id            String    @id @default(cuid())
   username      String    @unique
+  displayName   String?
+  email         String?
   password      String    // bcrypt hash
   role          String    @default("admin")
+  otpEnabled    Boolean   @default(false)
+  otpSecret     String?   // TOTP secret
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -91,7 +110,7 @@ model VPNServer {
 model VPNUser {
   id                  String    @id @default(cuid())
   username            String    @unique
-  commonName          String?   // For OpenVPN
+  commonName          String?   // For VPN
   ipAddress           String?
   endpoint            String?   // WireGuard peer's real public IP:port
   lastHandshake       DateTime? // WireGuard last handshake timestamp

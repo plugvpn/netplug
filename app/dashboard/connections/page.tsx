@@ -26,7 +26,7 @@ export default function ConnectionsPage() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Synced from WireGuard every 10s</span>
+            <span>Synced every 10s</span>
           </div>
           <button
             onClick={handleRefresh}

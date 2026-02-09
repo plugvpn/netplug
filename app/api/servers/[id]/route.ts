@@ -27,7 +27,7 @@ export async function PATCH(
     if (id === 'openvpn') {
       if (!vpnConfig.openVpn) {
         return NextResponse.json(
-          { error: 'OpenVPN is not configured in this system' },
+          { error: 'VPN is not configured in this system' },
           { status: 404 }
         );
       }
@@ -103,7 +103,7 @@ export async function PATCH(
           },
           create: {
             id: 'openvpn',
-            name: 'OpenVPN Server',
+            name: 'VPN Server',
             protocol: 'openvpn',
             host: vpnConfig.openVpn.serverUrl,
             port: vpnConfig.openVpn.port,
@@ -171,7 +171,7 @@ export async function DELETE(
     if (id === 'openvpn') {
       if (!vpnConfig.openVpn) {
         return NextResponse.json(
-          { error: 'OpenVPN is not configured in this system' },
+          { error: 'VPN is not configured in this system' },
           { status: 404 }
         );
       }

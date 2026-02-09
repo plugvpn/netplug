@@ -1,6 +1,6 @@
 # NetPlug VPN Dashboard
 
-An open-source, free alternative to commercial VPN management dashboards like OpenVPN's Access Server dashboard. Built with Next.js 16, TypeScript, and Tailwind CSS.
+An open-source, free alternative to commercial VPN management dashboards. Built with Next.js 16, TypeScript, and Tailwind CSS.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-16.1-black)
@@ -11,7 +11,7 @@ An open-source, free alternative to commercial VPN management dashboards like Op
 - **Initial Setup Wizard**: Easy 2-step setup for first-time configuration
 - **Authentication System**: Secure admin authentication with NextAuth.js
 - **Dashboard Overview**: Real-time statistics and monitoring of your VPN infrastructure
-- **Multi-Protocol Support**: Configure both OpenVPN and WireGuard simultaneously
+- **Multi-Protocol Support**: Configure and manage WireGuard VPN servers
 - **Server Management**: Add, configure, and monitor multiple VPN servers
 - **User Management**: Manage user accounts, track usage, and control access
 - **Active Connections**: Monitor live connections with 15-second refresh
@@ -36,7 +36,7 @@ An open-source, free alternative to commercial VPN management dashboards like Op
 
 - Node.js 20+
 - npm or yarn
-- A VPN server (OpenVPN, WireGuard, etc.)
+- A VPN server (WireGuard)
 
 No external database required - uses SQLite for lightweight storage!
 
@@ -86,7 +86,7 @@ npm run dev
    - You'll be automatically redirected to the setup wizard on first launch
    - Follow the 2-step setup process:
      1. Create your admin account
-     2. Configure your VPN server(s) (OpenVPN and/or WireGuard)
+     2. Configure your VPN server(s) (WireGuard)
 
 ### Building for Production
 
@@ -133,23 +133,20 @@ On first launch, you'll be guided through a 2-step setup wizard:
 - Password (8+ characters with uppercase, lowercase, and number)
 
 **Step 2: Configure VPN Servers**
-- Enable and configure OpenVPN (management interface)
 - Enable and configure WireGuard (interface settings)
-- At least one protocol must be enabled
+- Configure your VPN server settings
 
 ### Connecting to Your VPN Server
 
 The setup wizard stores your VPN configuration in the database. To integrate with your actual VPN servers:
 
-1. **OpenVPN**: Connect to the management interface (typically port 7505)
-2. **WireGuard**: Specify the interface name and config file path
-3. Create API routes in `app/api/` to interface with your VPN management interface
-4. Update the data fetching logic in the dashboard pages
+1. **WireGuard**: Specify the interface name and config file path
+2. Create API routes in `app/api/` to interface with your VPN management interface
+3. Update the data fetching logic in the dashboard pages
 
 ### Supported VPN Servers
 
 The dashboard is designed to work with:
-- OpenVPN (via management interface)
 - WireGuard (via wg command-line tools)
 - SoftEther (future support)
 - Any VPN server with a management API
@@ -187,7 +184,6 @@ Modify `/app/globals.css` to change:
 
 - [x] Initial setup wizard
 - [x] User authentication and authorization
-- [ ] Real VPN server integration (OpenVPN management interface)
 - [ ] Real VPN server integration (WireGuard)
 - [ ] Multiple admin accounts
 - [ ] Role-Based Access Control (RBAC)
@@ -219,7 +215,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Inspired by OpenVPN Access Server
 - Built with the amazing Next.js framework
 - Icons by Lucide
 
@@ -233,4 +228,4 @@ If you find this project useful, please consider giving it a star!
 
 ---
 
-**Note**: This is an open-source project and is not affiliated with or endorsed by OpenVPN Inc.
+**Note**: This is an open-source VPN management dashboard project.

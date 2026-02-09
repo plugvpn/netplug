@@ -11,9 +11,11 @@ function LoginForm() {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
+    otpCode: '',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [requiresOtp, setRequiresOtp] = useState(false)
 
   useEffect(() => {
     document.title = "Login | NetPlug Dashboard";
@@ -25,14 +27,46 @@ function LoginForm() {
     setLoading(true)
 
     try {
+      // If OTP is not yet required, check if user needs OTP
+      if (!requiresOtp) {
+        const checkResponse = await fetch('/api/auth/check-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: formData.username,
+            password: formData.password,
+          }),
+        })
+
+        const checkData = await checkResponse.json()
+
+        if (!checkResponse.ok) {
+          setError(checkData.error || 'Invalid username or password')
+          setLoading(false)
+          return
+        }
+
+        if (checkData.requiresOtp) {
+          setRequiresOtp(true)
+          setLoading(false)
+          return
+        }
+      }
+
+      // Proceed with sign in (with or without OTP)
       const result = await signIn('credentials', {
         username: formData.username,
         password: formData.password,
+        otpCode: formData.otpCode,
         redirect: false,
       })
 
       if (result?.error) {
-        setError('Invalid username or password')
+        if (requiresOtp) {
+          setError('Invalid OTP code')
+        } else {
+          setError('Invalid username or password')
+        }
         setLoading(false)
         return
       }
@@ -84,17 +118,54 @@ function LoginForm() {
             className="w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             placeholder="Enter your password"
             required
-            disabled={loading}
+            disabled={loading || requiresOtp}
           />
         </div>
+
+        {requiresOtp && (
+          <div>
+            <label htmlFor="otpCode" className="block text-sm font-medium text-slate-300 mb-2">
+              Two-Factor Authentication Code
+            </label>
+            <input
+              type="text"
+              id="otpCode"
+              value={formData.otpCode}
+              onChange={(e) => setFormData({ ...formData, otpCode: e.target.value })}
+              className="w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              placeholder="Enter 6-digit code"
+              maxLength={6}
+              required
+              disabled={loading}
+              autoFocus
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Enter the 6-digit code from your authenticator app
+            </p>
+          </div>
+        )}
 
         <button
           type="submit"
           disabled={loading}
           className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Signing in...' : 'Sign In'}
+          {loading ? 'Signing in...' : requiresOtp ? 'Verify & Sign In' : 'Sign In'}
         </button>
+
+        {requiresOtp && (
+          <button
+            type="button"
+            onClick={() => {
+              setRequiresOtp(false)
+              setFormData({ ...formData, otpCode: '' })
+            }}
+            disabled={loading}
+            className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-300 transition-all hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Back
+          </button>
+        )}
       </form>
     </div>
   )

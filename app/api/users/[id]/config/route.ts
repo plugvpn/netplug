@@ -36,7 +36,7 @@ export async function GET(
       }
       fileName = `${user.username}.conf`;
     } else if (user.server.protocol === 'openvpn') {
-      // Generate OpenVPN configuration template
+      // Generate VPN configuration template
       fileName = `${user.username}.ovpn`;
       configText = `client
 dev tun
@@ -55,7 +55,7 @@ verb 3
 # User: ${user.username}
 ${user.commonName ? `# Common Name: ${user.commonName}` : ''}
 
-# Note: OpenVPN configuration requires certificates and keys
+# Note: VPN configuration requires certificates and keys
 # Contact your administrator for the complete configuration file
 # including CA certificate, client certificate, private key, and TLS auth key`;
     } else {

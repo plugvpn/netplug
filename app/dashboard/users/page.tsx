@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/page-header";
 import { formatBytes } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import { User, Activity, X, Edit3, Trash2, Plus, Server, QrCode, Copy, Check, Eye, EyeOff, RefreshCw, Key } from "lucide-react";
+import { User, Activity, X, Edit3, Trash2, Plus, Server, QrCode, Copy, Check, Eye, EyeOff, RefreshCw, Key, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { ToastProvider, useToast } from "@/components/ToastProvider";
 import { QRCodeSVG } from "qrcode.react";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -197,6 +197,9 @@ function UsersPageContent() {
   const [showPresharedKey, setShowPresharedKey] = useState(false);
   const [generatingKeys, setGeneratingKeys] = useState(false);
   const [generatingPsk, setGeneratingPsk] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortColumn, setSortColumn] = useState<'username' | 'ipAddress' | 'status' | 'totalUsage' | 'remainingDays' | 'remainingTraffic' | 'connection' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     document.title = "Users | NetPlug Dashboard";
@@ -569,6 +572,60 @@ function UsersPageContent() {
     }
   };
 
+  const handleSort = (column: typeof sortColumn) => {
+    if (sortColumn === column) {
+      // Toggle direction if clicking same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new column and default to ascending
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Filter and sort users
+  const filteredAndSortedUsers = users
+    .filter(user => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        user.username.toLowerCase().includes(query) ||
+        (user.ipAddress && user.ipAddress.toLowerCase().includes(query))
+      );
+    })
+    .sort((a, b) => {
+      if (!sortColumn) return 0;
+
+      const direction = sortDirection === 'asc' ? 1 : -1;
+
+      switch (sortColumn) {
+        case 'username':
+          return direction * a.username.localeCompare(b.username);
+        case 'ipAddress':
+          const ipA = a.ipAddress || '';
+          const ipB = b.ipAddress || '';
+          return direction * ipA.localeCompare(ipB);
+        case 'status':
+          return direction * (Number(a.isEnabled) - Number(b.isEnabled));
+        case 'totalUsage':
+          const totalA = Number(a.totalBytesReceived) + Number(a.bytesReceived) + Number(a.totalBytesSent) + Number(a.bytesSent);
+          const totalB = Number(b.totalBytesReceived) + Number(b.bytesReceived) + Number(b.totalBytesSent) + Number(b.bytesSent);
+          return direction * (totalA - totalB);
+        case 'remainingDays':
+          const daysA = a.remainingDays ?? Infinity;
+          const daysB = b.remainingDays ?? Infinity;
+          return direction * (daysA - daysB);
+        case 'remainingTraffic':
+          const trafficA = a.remainingTrafficBytes ? Number(a.remainingTrafficBytes) : Infinity;
+          const trafficB = b.remainingTrafficBytes ? Number(b.remainingTrafficBytes) : Infinity;
+          return direction * (trafficA - trafficB);
+        case 'connection':
+          return direction * (Number(a.isConnected) - Number(b.isConnected));
+        default:
+          return 0;
+      }
+    });
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -584,7 +641,7 @@ function UsersPageContent() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Synced from WireGuard every 10s</span>
+            <span>Synced every 10s</span>
           </div>
           <button
             onClick={() => fetchUsers()}
@@ -603,7 +660,7 @@ function UsersPageContent() {
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">VPN Users</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Manage VPN user accounts and their access to OpenVPN or WireGuard servers
+              Manage VPN user accounts and their access to WireGuard servers
             </p>
           </div>
           <button
@@ -615,6 +672,22 @@ function UsersPageContent() {
             Add User
           </button>
         </div>
+
+        {/* Search Bar */}
+        {users.length > 0 && (
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search by username or IP address..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+              />
+            </div>
+          </div>
+        )}
 
         {servers.length === 0 ? (
           <div className="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
@@ -639,10 +712,26 @@ function UsersPageContent() {
               Add User
             </button>
           </div>
+        ) : filteredAndSortedUsers.length === 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-gray-900">
+            <Search className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" strokeWidth={1.5} />
+            <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No users found</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              No users match your search query "{searchQuery}". Try a different search term.
+            </p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="mt-6 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Clear Search
+            </button>
+          </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-gray-700" style={{ backgroundColor: '#030712' }}>
             <div className="border-b border-gray-800 bg-gradient-to-r from-gray-800 to-gray-900 p-6">
-              <h3 className="text-base font-normal text-white">All Users ({users.length})</h3>
+              <h3 className="text-base font-normal text-white">
+                All Users ({filteredAndSortedUsers.length}{filteredAndSortedUsers.length !== users.length && ` of ${users.length}`})
+              </h3>
             </div>
             <div
               className="overflow-x-auto"
@@ -656,25 +745,95 @@ function UsersPageContent() {
                   <thead style={{ backgroundColor: '#1f2937' }}>
                     <tr className="border-b border-gray-700">
                       <th className="px-6 py-3 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                        Username
+                        <button
+                          onClick={() => handleSort('username')}
+                          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
+                        >
+                          Username
+                          {sortColumn === 'username' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-30" />
+                          )}
+                        </button>
                       </th>
                       <th className="px-6 py-3 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                        IP Address
+                        <button
+                          onClick={() => handleSort('ipAddress')}
+                          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
+                        >
+                          IP Address
+                          {sortColumn === 'ipAddress' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-30" />
+                          )}
+                        </button>
                       </th>
                       <th className="px-6 py-3 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                        Status
+                        <button
+                          onClick={() => handleSort('status')}
+                          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
+                        >
+                          Status
+                          {sortColumn === 'status' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-30" />
+                          )}
+                        </button>
                       </th>
                       <th className="px-8 py-3 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                        Total Usage
+                        <button
+                          onClick={() => handleSort('totalUsage')}
+                          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
+                        >
+                          Total Usage
+                          {sortColumn === 'totalUsage' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-30" />
+                          )}
+                        </button>
                       </th>
                       <th className="px-6 py-3 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                        Remaining Days
+                        <button
+                          onClick={() => handleSort('remainingDays')}
+                          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
+                        >
+                          Remaining Days
+                          {sortColumn === 'remainingDays' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-30" />
+                          )}
+                        </button>
                       </th>
                       <th className="px-6 py-3 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                        Remaining Traffic
+                        <button
+                          onClick={() => handleSort('remainingTraffic')}
+                          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
+                        >
+                          Remaining Traffic
+                          {sortColumn === 'remainingTraffic' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-30" />
+                          )}
+                        </button>
                       </th>
                       <th className="px-6 py-3 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                        Connection
+                        <button
+                          onClick={() => handleSort('connection')}
+                          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
+                        >
+                          Connection
+                          {sortColumn === 'connection' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-30" />
+                          )}
+                        </button>
                       </th>
                       <th className="px-6 py-3 text-right text-sm font-medium text-gray-300 dark:text-gray-400">
                         Actions
@@ -683,7 +842,7 @@ function UsersPageContent() {
                   </thead>
                   <tbody className="divide-y divide-gray-800" style={{ backgroundColor: '#030712' }}>
                     {
-                      users.map((user, index) => {
+                      filteredAndSortedUsers.map((user, index) => {
                         const rowBg = index % 2 === 0 ? '#030712' : '#111827';
                         return (
                           <tr

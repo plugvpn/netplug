@@ -42,7 +42,7 @@ export async function GET() {
       if (vpnConfig.openVpn) {
         serversToCreate.push({
           id: 'openvpn',
-          name: 'OpenVPN Server',
+          name: 'VPN Server',
           protocol: 'openvpn',
           host: vpnConfig.openVpn.serverUrl,
           port: vpnConfig.openVpn.port,
