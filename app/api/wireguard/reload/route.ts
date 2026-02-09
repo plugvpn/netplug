@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { reloadWireGuardConfig } from '@/lib/wireguard/sync-service';
+import { requireAuth } from '@/lib/api-auth';
 
 export async function POST() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const success = await reloadWireGuardConfig('wg0');
 

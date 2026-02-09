@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getWireGuardStatus } from '@/lib/wireguard/sync-service';
+import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const status = await getWireGuardStatus('wg0');
 

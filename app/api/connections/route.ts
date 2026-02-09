@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { mockConnections } from "@/lib/mock-data";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function GET() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   // TODO: Replace with actual VPN server connection query
   // Example: Query OpenVPN management interface for active connections
   // const connections = await getActiveConnections();
@@ -10,6 +17,12 @@ export async function GET() {
 }
 
 export async function DELETE(request: Request) {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   const { searchParams } = new URL(request.url);
   const connectionId = searchParams.get("id");
 

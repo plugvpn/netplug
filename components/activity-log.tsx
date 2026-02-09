@@ -296,8 +296,7 @@ export function ActivityLog() {
         <div
           ref={logContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto font-mono text-xs bg-gray-950 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-900 [&::-webkit-scrollbar-thumb]:bg-gray-700 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:hover:bg-gray-600"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #111827' }}
+          className="flex-1 overflow-y-auto font-mono text-xs bg-gray-950"
         >
           {logs.length === 0 ? (
             <div className="flex h-full items-center justify-center text-gray-500">

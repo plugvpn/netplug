@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { requireAuth } from '@/lib/api-auth';
 
 const execAsync = promisify(exec);
 
@@ -24,6 +25,12 @@ async function runCommand(cmd: string) {
 }
 
 export async function GET() {
+  // Require authentication - prevents config disclosure
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   const diagnostics: any = {
     timestamp: new Date().toISOString(),
     checks: {},

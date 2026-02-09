@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server'
 import os from 'os'
 import { prisma } from '@/lib/prisma'
+import { requireAuth } from '@/lib/api-auth'
 
 export async function GET() {
+  // Require authentication - prevents system info disclosure
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     // Get system information
     const hostname = os.hostname()

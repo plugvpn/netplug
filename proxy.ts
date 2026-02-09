@@ -4,12 +4,16 @@ import type { NextRequest } from 'next/server'
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Allow API routes, static files, and public assets
+  // Public paths that don't require authentication
+  const publicPaths = ['/', '/login', '/setup', '/setup/vpn-config']
+
+  // Allow API routes, static files, public assets, and public paths
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon.ico') ||
-    pathname.startsWith('/plug-icon.png')
+    pathname.startsWith('/plug-icon.png') ||
+    publicPaths.includes(pathname)
   ) {
     return NextResponse.next()
   }
@@ -21,8 +25,8 @@ export default async function proxy(request: NextRequest) {
   // Check setup completion via cookie
   const setupComplete = request.cookies.get('setup-complete')?.value === 'true'
 
-  // If not authenticated and not on login page, redirect to login
-  if (!hasSession && pathname !== '/login') {
+  // If not authenticated and not on login/setup pages, redirect to login
+  if (!hasSession) {
     const callbackUrl = encodeURIComponent(pathname)
     return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, request.url))
   }

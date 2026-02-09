@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import path from "path";
 import { execSync } from "child_process";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function GET() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     // Get WireGuard configuration from SystemConfig
     const systemConfig = await prisma.systemConfig.findFirst();
@@ -63,9 +70,12 @@ export async function GET() {
 
     console.log('[WireGuard] Server public key exists:', !!server?.publicKey);
 
+    // Remove private key from response for security
+    const { privateKey, ...serverWithoutPrivateKey } = serverWithCorrectPath || {};
+
     return NextResponse.json({
       config: vpnConfig.wireGuard,
-      server: serverWithCorrectPath,
+      server: serverWithoutPrivateKey,
     });
   } catch (error) {
     console.error('Failed to fetch WireGuard configuration:', error);
@@ -77,6 +87,12 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const body = await request.json();
     const { config } = body;

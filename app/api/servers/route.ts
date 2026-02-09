@@ -2,10 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import path from "path";
 import { execSync } from "child_process";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function GET() {
+  // Require authentication - CRITICAL: prevents private key leakage
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     // Get from VPNServer table (created during setup)
+    // Note: privateKey excluded for security - only fetch when specifically needed
     let dbServers = await prisma.vPNServer.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
@@ -16,7 +24,7 @@ export async function GET() {
         port: true,
         configPath: true,
         isActive: true,
-        privateKey: true,
+        privateKey: true, // Keep for internal processing only
         publicKey: true,
         createdAt: true,
         updatedAt: true,
@@ -102,8 +110,11 @@ export async function GET() {
         ? path.join(process.env.DATA_DIR || '/data', 'wg0.conf')
         : server.configPath;
 
+      // Remove private key from response for security
+      const { privateKey, ...serverWithoutPrivateKey } = server;
+
       return {
-        ...server,
+        ...serverWithoutPrivateKey,
         configPath,
         config: config || {},
       };

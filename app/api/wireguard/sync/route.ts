@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import { syncWireGuardStatus } from '@/lib/wireguard/sync-service';
+import { requireAuth } from '@/lib/api-auth';
 
 /**
  * Manually trigger WireGuard sync
  * Useful for testing or forcing an immediate sync
  */
 export async function POST() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     console.log('[API] Manual WireGuard sync triggered');
     await syncWireGuardStatus('wg0');

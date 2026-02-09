@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getNextAvailableIP, isValidIPAddress, isIpInRange } from "@/lib/utils/ip-allocation";
 import { reloadWireGuardConfig } from "@/lib/wireguard/sync-service";
+import { requireAuth } from "@/lib/api-auth";
 
 // Helper function to serialize BigInt values recursively
 function serializeUser(user: any) {
@@ -11,10 +12,26 @@ function serializeUser(user: any) {
 }
 
 export async function GET() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const users = await prisma.vPNUser.findMany({
       include: {
-        server: true,
+        server: {
+          select: {
+            id: true,
+            name: true,
+            protocol: true,
+            host: true,
+            port: true,
+            isActive: true,
+            // Exclude private/public keys for security
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -30,6 +47,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const body = await request.json();
     const { username, serverId, commonName, ipAddress, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficBytes } = body;

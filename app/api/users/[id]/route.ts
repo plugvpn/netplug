@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { reloadWireGuardConfig } from "@/lib/wireguard/sync-service";
+import { requireAuth } from "@/lib/api-auth";
 
 // Helper function to serialize BigInt values recursively
 function serializeUser(user: any) {
@@ -13,6 +14,12 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -57,6 +64,12 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const { id } = await params;
 

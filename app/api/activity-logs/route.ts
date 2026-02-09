@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import { logCapture } from '@/lib/log-capture';
+import { requireAuth } from '@/lib/api-auth';
 
 /**
  * GET /api/activity-logs
  * Retrieve captured server logs with optional filtering
  */
 export async function GET(request: Request) {
+  // Require authentication - prevents log disclosure
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     const { searchParams } = new URL(request.url);
 
@@ -47,6 +54,12 @@ export async function GET(request: Request) {
  * Clear all captured logs
  */
 export async function DELETE() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     logCapture.clearLogs();
 

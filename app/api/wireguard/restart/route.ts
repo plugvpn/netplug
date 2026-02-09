@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 import { bringDownWireGuard, bringUpWireGuard } from '@/lib/wireguard/sync-service';
 import { writeWireGuardConfig } from '@/lib/wireguard/config-generator';
+import { requireAuth } from '@/lib/api-auth';
 
 export async function POST() {
+  // Require authentication
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+
   try {
     // Generate config
     const generated = await writeWireGuardConfig();
