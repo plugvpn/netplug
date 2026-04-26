@@ -1,12 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { ToastProvider, useToast } from '@/components/ToastProvider'
 
 function SetupPageContent() {
-  const router = useRouter()
   const { showToast } = useToast()
   const [formData, setFormData] = useState({
     username: '',
@@ -26,12 +24,15 @@ function SetupPageContent() {
         const response = await fetch('/api/setup/check-admin')
         const data = await response.json()
 
-        if (data.hasAdmin) {
-          // Admin exists, skip to VPN configuration
-          router.push('/setup/vpn-config')
-        } else {
-          setChecking(false)
+        if (data.setupComplete) {
+          window.location.assign('/dashboard')
+          return
         }
+        if (data.hasAdmin) {
+          window.location.assign('/setup/vpn-config')
+          return
+        }
+        setChecking(false)
       } catch (err) {
         console.error('Error checking admin:', err)
         setChecking(false)
@@ -39,7 +40,7 @@ function SetupPageContent() {
     }
 
     checkAdmin()
-  }, [router])
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,6 +56,11 @@ function SetupPageContent() {
       })
 
       const data = await response.json()
+
+      if (response.ok && data.setupAlreadyComplete) {
+        window.location.assign('/dashboard')
+        return
+      }
 
       if (!response.ok) {
         setError(data.error || 'Failed to create admin account')
@@ -80,7 +86,7 @@ function SetupPageContent() {
 
       // Navigate to VPN configuration after a short delay
       setTimeout(() => {
-        router.push('/setup/vpn-config')
+        window.location.assign('/setup/vpn-config')
       }, 1000)
     } catch (err) {
       setError('An unexpected error occurred')

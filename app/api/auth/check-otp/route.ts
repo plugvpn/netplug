@@ -1,40 +1,22 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { verifyPassword } from '@/lib/password';
+import { validateUserCredentials } from '@/lib/credentials-verify';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { username, password } = body;
 
-    if (!username || !password) {
-      return NextResponse.json(
-        { error: 'Username and password are required' },
-        { status: 400 }
-      );
+    const checked = await validateUserCredentials(
+      typeof username === 'string' ? username : '',
+      typeof password === 'string' ? password : '',
+    );
+
+    if (!checked.ok) {
+      const status = checked.error.includes('required') ? 400 : 401;
+      return NextResponse.json({ error: checked.error }, { status });
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { username },
-    }) as any;
-
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      );
-    }
-
-    // Verify password
-    const isValidPassword = await verifyPassword(password, user.password);
-
-    if (!isValidPassword) {
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      );
-    }
+    const user = checked.user;
 
     // Return whether OTP is required
     return NextResponse.json({

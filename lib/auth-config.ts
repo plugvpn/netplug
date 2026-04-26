@@ -1,7 +1,7 @@
 import type { NextAuthConfig } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from './prisma'
-import { verifyPassword } from './password'
+import { validateUserCredentials } from './credentials-verify'
 import * as OTPAuth from 'otpauth'
 
 export const authConfig: NextAuthConfig = {
@@ -18,22 +18,15 @@ export const authConfig: NextAuthConfig = {
           return null
         }
 
-        const user = await prisma.user.findUnique({
-          where: { username: credentials.username as string },
-        }) as any
-
-        if (!user) {
-          return null
-        }
-
-        const isValidPassword = await verifyPassword(
+        const checked = await validateUserCredentials(
+          credentials.username as string,
           credentials.password as string,
-          user.password
         )
-
-        if (!isValidPassword) {
+        if (!checked.ok) {
           return null
         }
+
+        const user = checked.user as any
 
         // Check if OTP is enabled
         if (user.otpEnabled && user.otpSecret) {

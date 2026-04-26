@@ -2,11 +2,18 @@
 
 import { useState, Suspense, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 
+/** Only allow same-origin relative paths (avoid open redirects). */
+function safeInternalPath(raw: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null
+  const path = raw.split('?')[0]
+  if (!path.startsWith('/') || path.startsWith('//')) return null
+  return path
+}
+
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [formData, setFormData] = useState({
     username: '',
@@ -61,19 +68,33 @@ function LoginForm() {
         redirect: false,
       })
 
-      if (result?.error) {
+      if (!result || result.error || !result.ok) {
         if (requiresOtp) {
           setError('Invalid OTP code')
         } else {
-          setError('Invalid username or password')
+          setError(result?.error || 'Sign in failed. Check your credentials and try again.')
         }
         setLoading(false)
         return
       }
 
-      // Redirect to the callback URL or dashboard
-      const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
-      router.push(callbackUrl)
+      let destination = safeInternalPath(searchParams.get('callbackUrl')) || '/dashboard'
+
+      if (destination.startsWith('/setup')) {
+        try {
+          const statusRes = await fetch('/api/setup/status')
+          if (statusRes.ok) {
+            const st = await statusRes.json()
+            if (st.isSetupComplete) {
+              destination = '/dashboard'
+            }
+          }
+        } catch {
+          // keep destination
+        }
+      }
+
+      window.location.assign(destination)
     } catch (err) {
       setError('An unexpected error occurred')
       setLoading(false)

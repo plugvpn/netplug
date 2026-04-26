@@ -8,6 +8,7 @@ import { User, Activity, X, Edit3, Trash2, Plus, Server, QrCode, Copy, Check, Ey
 import { ToastProvider, useToast } from "@/components/ToastProvider";
 import { QRCodeSVG } from "qrcode.react";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { splitAllowedIps, peerIpFromAllowedIps, normalizeIpList } from '@/lib/allowed-ips';
 
 interface VPNServer {
   id: string;
@@ -24,7 +25,9 @@ interface VPNUser {
   id: string;
   username: string;
   commonName: string | null;
+  /** First peer IP from allowedIps (API convenience; not a DB column). */
   ipAddress: string | null;
+  allowedIps: string | null;
   endpoint: string | null;
   privateKey: string | null;
   publicKey: string | null;
@@ -45,8 +48,10 @@ interface VPNUser {
 }
 
 // UI version with numbers for editing
-interface VPNUserEdit extends Omit<Partial<VPNUser>, 'remainingTrafficBytes'> {
+interface VPNUserEdit extends Omit<Partial<VPNUser>, 'remainingTrafficBytes' | 'allowedIps'> {
   remainingTrafficBytes?: number | null;
+  peerIp?: string | null;
+  routingAllowedIps?: string | null;
 }
 
 // Custom syntax highlighter theme matching dashboard
@@ -177,6 +182,13 @@ const customSyntaxTheme = {
   },
 };
 
+const buildAllowedIps = (peerIp: string | null | undefined, routingAllowedIps: string | null | undefined) => {
+  const baseIps = normalizeIpList(routingAllowedIps || '');
+  const finalIps = peerIp ? [peerIp.trim(), ...baseIps] : baseIps;
+  const uniqueIps = Array.from(new Set(finalIps.map(ip => ip.trim()).filter(ip => ip.length > 0)));
+  return uniqueIps.length > 0 ? uniqueIps.join(',') : null;
+};
+
 function UsersPageContent() {
   const { showToast } = useToast();
   const [users, setUsers] = useState<VPNUser[]>([]);
@@ -232,7 +244,12 @@ function UsersPageContent() {
 
       // Ensure data is an array before setting
       if (Array.isArray(data)) {
-        setUsers(data);
+        setUsers(
+          data.map((u: VPNUser) => ({
+            ...u,
+            ipAddress: u.ipAddress ?? peerIpFromAllowedIps(u.allowedIps),
+          })),
+        );
       } else {
         console.error('API returned non-array data:', data);
         setUsers([]);
@@ -274,7 +291,8 @@ function UsersPageContent() {
       username: '',
       serverId: serverId,
       commonName: '',
-      ipAddress: null,
+      peerIp: null,
+      routingAllowedIps: null,
       privateKey: '',
       publicKey: '',
       presharedKey: null,
@@ -287,9 +305,13 @@ function UsersPageContent() {
     try {
       const response = await fetch(`/api/users/next-ip?serverId=${serverId}`);
       if (response.ok) {
-        const data = await response.json();
-        if (data.ipAddress) {
-          newUser.ipAddress = data.ipAddress;
+        const data = (await response.json()) as {
+          allowedIps?: string | null;
+          ipAddress?: string | null;
+        };
+        const nextPeerIp = data.allowedIps || data.ipAddress;
+        if (nextPeerIp) {
+          newUser.peerIp = nextPeerIp;
         }
       }
     } catch (error) {
@@ -315,9 +337,12 @@ function UsersPageContent() {
   };
 
   const handleEditUser = (user: VPNUser) => {
+    const { peerIp, routingAllowedIps } = splitAllowedIps(user.allowedIps);
     // Convert bytes to MB for display
     const userWithMB = {
       ...user,
+      peerIp,
+      routingAllowedIps,
       remainingTrafficBytes: user.remainingTrafficBytes !== null ? Number(user.remainingTrafficBytes) / (1024 * 1024) : null
     };
     setEditingUser(userWithMB);
@@ -328,8 +353,11 @@ function UsersPageContent() {
     try {
       const response = await fetch(`/api/users/next-ip?serverId=${serverId}`);
       if (response.ok) {
-        const data = await response.json();
-        return data.ipAddress;
+        const data = (await response.json()) as {
+          allowedIps?: string | null;
+          ipAddress?: string | null;
+        };
+        return data.allowedIps || data.ipAddress;
       }
     } catch (error) {
       console.error('Failed to fetch next IP:', error);
@@ -345,7 +373,7 @@ function UsersPageContent() {
     if (!editingUser?.id && selectedServer?.protocol === 'wireguard') {
       const nextIp = await fetchNextIP(serverId);
       if (nextIp) {
-        updatedUser.ipAddress = nextIp;
+        updatedUser.peerIp = nextIp;
       }
     }
 
@@ -437,10 +465,17 @@ function UsersPageContent() {
     }
 
     try {
+      const allowedIps = buildAllowedIps(editingUser.peerIp, editingUser.routingAllowedIps);
+      const selectedServer = servers.find((s) => s.id === editingUser.serverId);
+      if (selectedServer?.protocol === "wireguard" && !allowedIps) {
+        showToast("VPN tunnel IP is required for WireGuard users", "error");
+        return;
+      }
+
       const payload = {
         username: editingUser.username,
         serverId: editingUser.serverId,
-        ipAddress: editingUser.ipAddress || null,
+        allowedIps,
         privateKey: editingUser.privateKey || null,
         publicKey: editingUser.publicKey || null,
         presharedKey: editingUser.presharedKey || null,
@@ -468,8 +503,8 @@ function UsersPageContent() {
         setEditingUser(null);
 
         // Show success message with IP address for new users
-        if (!editingUser.id && result.user?.ipAddress) {
-          showToast(`User created successfully! VPN IP: ${result.user.ipAddress}`, 'success');
+        if (!editingUser.id && result.user?.allowedIps) {
+          showToast(`User created successfully! Allowed IPs: ${result.user.allowedIps}`, 'success');
         } else if (editingUser.id) {
           showToast('User updated successfully!', 'success');
         } else {
@@ -590,7 +625,8 @@ function UsersPageContent() {
       const query = searchQuery.toLowerCase();
       return (
         user.username.toLowerCase().includes(query) ||
-        (user.ipAddress && user.ipAddress.toLowerCase().includes(query))
+        (user.ipAddress && user.ipAddress.toLowerCase().includes(query)) ||
+        (user.allowedIps && user.allowedIps.toLowerCase().includes(query))
       );
     })
     .sort((a, b) => {
@@ -1141,8 +1177,8 @@ function UsersPageContent() {
                 <div className="relative">
                   <input
                     type="text"
-                    value={editingUser.ipAddress || ''}
-                    onChange={(e) => !editingUser.id && setEditingUser({ ...editingUser, ipAddress: e.target.value })}
+                    value={editingUser.peerIp || ''}
+                    onChange={(e) => !editingUser.id && setEditingUser({ ...editingUser, peerIp: e.target.value })}
                     disabled={!!editingUser.id}
                     placeholder={editingUser.id ? '' : '10.5.10.2'}
                     className={`w-full rounded-lg border px-4 py-3 font-mono text-sm ${
@@ -1156,6 +1192,29 @@ function UsersPageContent() {
                   {editingUser.id
                     ? 'IP address cannot be changed after creation'
                     : 'Suggested next available IP. You can modify it if needed.'}
+                </p>
+              </div>
+
+              {/* WireGuard peer AllowedIPs (beyond tunnel address) */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Allowed IPs
+                </label>
+                <input
+                  type="text"
+                  value={editingUser.routingAllowedIps ?? ""}
+                  onChange={(e) =>
+                    setEditingUser({ ...editingUser, routingAllowedIps: e.target.value || null })
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+                  placeholder="192.168.0.0/16, 10.0.0.0/8, 0.0.0.0/0, ::/0"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {`Optional extra prefixes for this peer's `}
+                  <span className="font-mono">AllowedIPs</span>
+                  {` line in `}
+                  <span className="font-mono">wg0.conf</span>
+                  {` (after the tunnel IP above). Comma-separated CIDRs.`}
                 </p>
               </div>
 
@@ -1314,7 +1373,7 @@ function UsersPageContent() {
                       <div className="text-sm text-gray-600 dark:text-gray-400">
                         <div>Server: {qrCodeUser.server.name}</div>
                         <div>Protocol: {qrCodeUser.server.protocol.toUpperCase()}</div>
-                        {qrCodeUser.ipAddress && <div>IP: {qrCodeUser.ipAddress}</div>}
+                        {qrCodeUser.ipAddress ? <div>IP: {qrCodeUser.ipAddress}</div> : null}
                       </div>
                     </div>
 

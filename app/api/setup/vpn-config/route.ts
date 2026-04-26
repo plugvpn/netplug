@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { markSetupComplete, isSetupComplete } from '@/lib/setup'
 import { initializeWireGuard } from '@/lib/wireguard/sync-service'
 import { writeWireGuardConfig } from '@/lib/wireguard/config-generator'
+import { requireAdmin } from '@/lib/api-auth'
 import path from 'path'
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdmin()
+  if (!authResult.authenticated) {
+    return authResult.error
+  }
+
   try {
     // Check if setup is already complete
     const setupComplete = await isSetupComplete()
@@ -81,8 +87,6 @@ export async function POST(request: NextRequest) {
       vpnConfiguration.wireGuard.fwMark = parseInt(wireGuard.fwMark)
     }
 
-    await markSetupComplete(vpnConfiguration)
-
     // Use the provided WireGuard key pair from the frontend
     const serverPrivateKey = wireGuard.privateKey
     const serverPublicKey = wireGuard.publicKey
@@ -143,6 +147,9 @@ export async function POST(request: NextRequest) {
     } finally {
       await prisma.$disconnect()
     }
+
+    // Mark complete only after server row and config write succeed (avoids stuck wizard + 500)
+    await markSetupComplete(vpnConfiguration)
 
     // Create response with setup-complete cookie
     const response = NextResponse.json({

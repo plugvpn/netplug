@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (server.protocol !== 'wireguard') {
-      return NextResponse.json({ ipAddress: null });
+      return NextResponse.json({ allowedIps: null });
     }
 
     // Get WireGuard configuration
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const vpnConfig = systemConfig?.vpnConfiguration as any;
 
     if (!vpnConfig?.wireGuard) {
-      return NextResponse.json({ ipAddress: null });
+      return NextResponse.json({ allowedIps: null });
     }
 
     const clientAddressRange = vpnConfig.wireGuard.clientAddressRange;
@@ -45,14 +45,15 @@ export async function GET(request: NextRequest) {
     const existingUsers = await prisma.vPNUser.findMany({
       where: {
         serverId,
-        ipAddress: { not: null }
+        allowedIps: { not: null }
       },
-      select: { ipAddress: true },
+      select: { allowedIps: true },
     });
 
     const usedIps = existingUsers
-      .map(u => u.ipAddress)
-      .filter((ip): ip is string => ip !== null);
+      .map(u => u.allowedIps)
+      .filter((ip): ip is string => ip !== null)
+      .map(ips => ips.split(',')[0].split('/')[0].trim()); // Extract first IP without CIDR
 
     // Calculate next available IP
     const nextIp = getNextAvailableIP(
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
       usedIps
     );
 
-    return NextResponse.json({ ipAddress: nextIp });
+    return NextResponse.json({ allowedIps: nextIp ? `${nextIp}/32` : null });
   } catch (error) {
     console.error('Failed to calculate next IP:', error);
     return NextResponse.json(

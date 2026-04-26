@@ -1,21 +1,21 @@
-version: '3.8'
-
 services:
-  dashboard:
-    build: .
-    container_name: netplug-dashboard
-    ports:
-      - "3000:3000/tcp"
-      - "443:443/udp"
-    environment:
-      - NODE_ENV=production
-    volumes:
-      - $PWD/:/app
-      - $PWD/sandbox:/data
-    restart: unless-stopped
-    networks:
-      - netplug-network
 
-networks:
-  netplug-network:
-    driver: bridge
+  netplug:
+    build: .
+    restart: always
+    container_name: netplug
+    ports:
+      - "32443:443/udp"
+      - "127.0.0.1:3000:3000/tcp"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      DATABASE_URL: "file:/data/prod.db"
+      DATA_DIR: /data
+      AUTH_SECRET: "6ea8eeec6f71e373a6644f65b21828d89a8e07c35802ca"
+      AUTH_URL: "http://localhost:3000"
+    volumes:
+      - "$PWD/sandbox:/data"
+      #- "$PWD/server.log:/app/server.log"
+      - "/lib/modules:/lib/modules:ro"
