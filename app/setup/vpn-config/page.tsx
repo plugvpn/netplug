@@ -204,17 +204,14 @@ export default function VPNConfigPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const completeSetup = async () => {
     setError('')
 
-    // Validate WireGuard is enabled
     if (!wireGuardEnabled) {
       setError('WireGuard VPN must be enabled')
       return
     }
 
-    // Validate key pair exists
     if (!keyPair.privateKey || !keyPair.publicKey) {
       setError('WireGuard key pair is required')
       return
@@ -223,7 +220,7 @@ export default function VPNConfigPage() {
     setLoading(true)
 
     try {
-      const wireGuardData: any = {
+      const wireGuardData: Record<string, unknown> = {
         ...wireGuardConfig,
         enabled: true,
         privateKey: keyPair.privateKey,
@@ -231,9 +228,8 @@ export default function VPNConfigPage() {
         dns: dnsServers.join(', '),
       }
 
-      // Only include FwMark if enabled and has a valid value
       if (fwMarkEnabled && fwMark && fwMark !== '-') {
-        const fwMarkValue = parseInt(fwMark)
+        const fwMarkValue = parseInt(fwMark, 10)
         if (!isNaN(fwMarkValue) && fwMarkValue > 0) {
           wireGuardData.fwMark = fwMarkValue
         }
@@ -242,24 +238,47 @@ export default function VPNConfigPage() {
       const response = await fetch('/api/setup/vpn-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          wireGuard: wireGuardData,
-        }),
+        body: JSON.stringify({ wireGuard: wireGuardData }),
+        credentials: 'same-origin',
       })
 
-      const data = await response.json()
+      const raw = await response.text()
+      let data: { error?: string } = {}
+      if (raw) {
+        try {
+          data = JSON.parse(raw) as { error?: string }
+        } catch {
+          setError('Server returned an invalid response. Check the app logs.')
+          setLoading(false)
+          return
+        }
+      }
 
       if (!response.ok) {
-        setError(data.error || 'Failed to save configuration')
+        const message = data.error || 'Failed to save configuration'
+        if (
+          response.status === 400 &&
+          typeof message === 'string' &&
+          message.toLowerCase().includes('already been completed')
+        ) {
+          goToDashboardAfterSetup()
+          return
+        }
+        setError(message)
         setLoading(false)
         return
       }
 
       goToDashboardAfterSetup()
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
       setLoading(false)
     }
+  }
+
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    void completeSetup()
   }
 
   return (
@@ -380,7 +399,7 @@ export default function VPNConfigPage() {
           </button>
         </form>
       ) : (
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form noValidate onSubmit={handleFormSubmit} className="space-y-6">
         {/* WireGuard Section */}
         <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-6">
           <div className="mb-4 flex items-center justify-between">
@@ -714,8 +733,9 @@ export default function VPNConfigPage() {
         </div>
 
         <button
-          type="submit"
+          type="button"
           disabled={loading}
+          onClick={() => void completeSetup()}
           className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? 'Saving Configuration...' : 'Complete Setup'}

@@ -4,9 +4,15 @@ import { secureSetupCookie } from '@/lib/setup-cookie'
 import { prisma } from '@/lib/prisma'
 import { initializeWireGuard } from '@/lib/wireguard/sync-service'
 import { writeWireGuardConfig } from '@/lib/wireguard/config-generator'
+import { requireAdmin } from '@/lib/api-auth'
 import path from 'path'
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdmin()
+  if (!authResult.authenticated) {
+    return authResult.error
+  }
+
   try {
     // Check if setup is already complete
     const setupComplete = await isSetupComplete()
@@ -83,8 +89,6 @@ export async function POST(request: NextRequest) {
       vpnConfiguration.wireGuard.fwMark = parseInt(wireGuard.fwMark)
     }
 
-    await markSetupComplete(vpnConfiguration)
-
     // Use the provided WireGuard key pair from the frontend
     const serverPrivateKey = wireGuard.privateKey
     const serverPublicKey = wireGuard.publicKey
@@ -134,6 +138,9 @@ export async function POST(request: NextRequest) {
         console.warn('[Setup] You may need to run "sudo wg-quick up wg0" manually')
       }
     }
+
+    // Mark complete only after server row and config write succeed (avoids stuck wizard + 500)
+    await markSetupComplete(vpnConfiguration)
 
     // Create response with setup-complete cookie
     const response = NextResponse.json({

@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getNextAvailableIP, isValidIPAddress, isIpInRange } from "@/lib/utils/ip-allocation";
+import { getNextAvailableIP, isIpInRange } from "@/lib/utils/ip-allocation";
 import { reloadWireGuardConfig } from "@/lib/wireguard/sync-service";
 import { requireAuth } from "@/lib/api-auth";
-
-// Helper function to serialize BigInt values recursively
-function serializeUser(user: any) {
-  return JSON.parse(JSON.stringify(user, (key, value) =>
-    typeof value === 'bigint' ? value.toString() : value
-  ));
-}
+import { serializeVpnUserForApi } from "@/lib/vpn-user-api";
+import { normalizeIpList, peerIpFromAllowedIps } from "@/lib/allowed-ips";
 
 export async function GET() {
   // Require authentication
@@ -36,7 +31,7 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(users.map(serializeUser));
+    return NextResponse.json(users.map(serializeVpnUserForApi));
   } catch (error) {
     console.error('Failed to fetch users:', error);
     return NextResponse.json(
@@ -55,7 +50,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { username, serverId, commonName, ipAddress, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficBytes } = body;
+    const { username, serverId, commonName, allowedIps, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficBytes } = body;
 
     // Validate required fields
     if (!username || !serverId) {
@@ -89,37 +84,10 @@ export async function POST(request: Request) {
       );
     }
 
-    let assignedIpAddress: string | null = ipAddress || null;
-
-    // Validate provided IP address for WireGuard
-    if (server.protocol === 'wireguard' && assignedIpAddress) {
-      // Validate IP format
-      if (!isValidIPAddress(assignedIpAddress)) {
-        return NextResponse.json(
-          { error: 'Invalid IP address format' },
-          { status: 400 }
-        );
-      }
-
-      // Get WireGuard configuration to validate IP is in range
-      const systemConfig = await prisma.systemConfig.findFirst();
-      const vpnConfig = systemConfig?.vpnConfiguration as any;
-
-      if (vpnConfig?.wireGuard) {
-        const clientAddressRange = vpnConfig.wireGuard.clientAddressRange;
-
-        // Check if IP is within the configured range
-        if (!isIpInRange(assignedIpAddress, clientAddressRange)) {
-          return NextResponse.json(
-            { error: `IP address must be within the configured range: ${clientAddressRange}` },
-            { status: 400 }
-          );
-        }
-      }
-    }
+    let assignedAllowedIps: string | null = allowedIps || null;
 
     // Auto-assign IP for WireGuard servers if not provided
-    if (server.protocol === 'wireguard' && !assignedIpAddress) {
+    if (server.protocol === 'wireguard' && !assignedAllowedIps) {
       // Get WireGuard configuration
       const systemConfig = await prisma.systemConfig.findFirst();
       const vpnConfig = systemConfig?.vpnConfiguration as any;
@@ -132,46 +100,87 @@ export async function POST(request: Request) {
         const existingUsers = await prisma.vPNUser.findMany({
           where: {
             serverId,
-            ipAddress: { not: null }
+            allowedIps: { not: null }
           },
-          select: { ipAddress: true },
+          select: { allowedIps: true },
         });
 
         const usedIps = existingUsers
-          .map(u => u.ipAddress)
-          .filter((ip): ip is string => ip !== null);
+          .map(u => u.allowedIps)
+          .filter((ip): ip is string => ip !== null)
+          .map(ips => ips.split(',')[0].split('/')[0].trim()); // Extract first IP without CIDR
 
         // Calculate next available IP
-        assignedIpAddress = getNextAvailableIP(
+        const nextIp = getNextAvailableIP(
           clientAddressRange,
           serverAddress || vpnConfig.wireGuard.serverAddress,
           usedIps
         );
 
-        if (!assignedIpAddress) {
+        if (!nextIp) {
           return NextResponse.json(
             { error: 'No available IP addresses in the configured range' },
             { status: 400 }
           );
         }
+        
+        // Assign with /32 suffix for single IP
+        assignedAllowedIps = `${nextIp}/32`;
       }
     }
 
-    // Validate IP address if provided for WireGuard
-    if (server.protocol === 'wireguard' && assignedIpAddress) {
-      // Check if IP is already in use
-      const existingUserWithIp = await prisma.vPNUser.findFirst({
-        where: {
-          serverId,
-          ipAddress: assignedIpAddress,
-        },
-      });
-
-      if (existingUserWithIp) {
+    // WireGuard: CIDR format for all entries; only the tunnel (first) address must sit in clientAddressRange.
+    // Additional AllowedIPs may be any routable prefixes (e.g. 192.168.0.0/16, 0.0.0.0/0).
+    if (server.protocol === 'wireguard' && assignedAllowedIps) {
+      const entries = normalizeIpList(assignedAllowedIps);
+      if (entries.length === 0) {
         return NextResponse.json(
-          { error: `IP address ${assignedIpAddress} is already in use` },
+          { error: 'Allowed IPs must include at least one CIDR entry' },
           { status: 400 }
         );
+      }
+      for (const ip of entries) {
+        if (!ip.includes('/')) {
+          return NextResponse.json(
+            { error: 'IPs must be in CIDR notation (e.g., 10.5.10.2/32)' },
+            { status: 400 }
+          );
+        }
+      }
+
+      const systemConfig = await prisma.systemConfig.findFirst();
+      const vpnConfig = systemConfig?.vpnConfiguration as { wireGuard?: { clientAddressRange?: string } } | null;
+      const clientAddressRange = vpnConfig?.wireGuard?.clientAddressRange;
+      if (clientAddressRange) {
+        const firstHost = entries[0].split('/')[0];
+        if (!isIpInRange(firstHost, clientAddressRange)) {
+          return NextResponse.json(
+            {
+              error: `Tunnel address ${firstHost} must be within the configured client range: ${clientAddressRange}`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      assignedAllowedIps = entries.join(',');
+
+      const newPeerIp = peerIpFromAllowedIps(assignedAllowedIps);
+      if (newPeerIp) {
+        const peersOnServer = await prisma.vPNUser.findMany({
+          where: { serverId, allowedIps: { not: null } },
+          select: { allowedIps: true, username: true },
+        });
+        for (const other of peersOnServer) {
+          if (peerIpFromAllowedIps(other.allowedIps) === newPeerIp) {
+            return NextResponse.json(
+              {
+                error: `Tunnel IP ${newPeerIp} is already assigned to user ${other.username}`,
+              },
+              { status: 400 }
+            );
+          }
+        }
       }
     }
 
@@ -200,7 +209,7 @@ export async function POST(request: Request) {
         username,
         serverId,
         commonName: commonName || null,
-        ipAddress: assignedIpAddress || null,
+        allowedIps: assignedAllowedIps || null,
         privateKey: privateKey,
         publicKey: publicKey,
         presharedKey: presharedKey,
@@ -222,7 +231,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: "User created successfully",
-      user: serializeUser(user),
+      user: serializeVpnUserForApi(user),
     });
   } catch (error) {
     console.error('Failed to create user:', error);

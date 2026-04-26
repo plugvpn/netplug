@@ -31,7 +31,7 @@ export interface VPNConnection {
   username: string;
   serverId: string;
   serverName: string;
-  ipAddress: string;
+  allowedIps: string;
   connectedAt: Date;
   bytesReceived: number;
   bytesSent: number;

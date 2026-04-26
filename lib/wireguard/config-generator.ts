@@ -117,8 +117,8 @@ ListenPort = ${wgConfig.serverPort}
       config += `\n# ========== Client Peers ==========\n`;
 
       for (const user of users) {
-        if (!user.ipAddress) {
-          console.warn(`User ${user.username} has no IP address assigned, skipping`);
+        if (!user.allowedIps) {
+          console.warn(`User ${user.username} has no allowed IPs assigned, skipping`);
           continue;
         }
 
@@ -138,7 +138,7 @@ ListenPort = ${wgConfig.serverPort}
           config += `PresharedKey = ${user.presharedKey}\n`;
         }
 
-        config += `AllowedIPs = ${user.ipAddress}/32\n`;
+        config += `AllowedIPs = ${user.allowedIps}\n`;
 
         if (wgConfig.persistentKeepalive > 0) {
           config += `PersistentKeepalive = ${wgConfig.persistentKeepalive}\n`;
@@ -252,7 +252,7 @@ export async function generateClientConfig(userId: string): Promise<string | nul
       config += `PrivateKey = <CLIENT_PRIVATE_KEY_NOT_GENERATED>\n`;
     }
 
-    config += `Address = ${user.ipAddress}/32
+    config += `Address = ${user.allowedIps?.split(',')[0] || ''}
 DNS = ${wgConfig.dns}
 MTU = ${wgConfig.mtu}
 

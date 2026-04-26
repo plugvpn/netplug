@@ -5,13 +5,14 @@ import { isSetupComplete } from '@/lib/setup'
 
 export async function POST(request: NextRequest) {
   try {
-    // Check if setup is already complete
+    // Wizard is closed — send client to the app instead of an error state
     const setupComplete = await isSetupComplete()
     if (setupComplete) {
-      return NextResponse.json(
-        { error: 'Setup has already been completed' },
-        { status: 400 }
-      )
+      return NextResponse.json({
+        success: true,
+        setupAlreadyComplete: true,
+        message: 'Setup has already been completed',
+      })
     }
 
     const body = await request.json()

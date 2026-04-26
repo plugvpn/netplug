@@ -10,6 +10,17 @@ interface NetworkChartProps {
   data: NetworkStats[];
 }
 
+/** Matches Recharts tooltip payload `value` without importing package-internal types. */
+type TooltipChartValue = string | number | readonly (string | number)[] | undefined;
+
+function formatTooltipMb(value: TooltipChartValue): string {
+  if (value === undefined) return "";
+  const scalar: string | number = Array.isArray(value) ? (value[0] ?? "") : value;
+  if (scalar === "") return "";
+  const n = typeof scalar === "number" ? scalar : Number(scalar);
+  return Number.isFinite(n) ? n.toFixed(2) : "";
+}
+
 export function NetworkChart({ data }: NetworkChartProps) {
   const chartData = data.map((stat) => ({
     time: format(stat.timestamp, "HH:mm"),
@@ -51,7 +62,7 @@ export function NetworkChart({ data }: NetworkChartProps) {
                             Inbound
                           </span>
                           <span className="font-bold text-green-600">
-                            {payload[0].value?.toFixed(2)} MB
+                            {formatTooltipMb(payload[0].value)} MB
                           </span>
                         </div>
                         <div className="flex flex-col">
@@ -59,7 +70,7 @@ export function NetworkChart({ data }: NetworkChartProps) {
                             Outbound
                           </span>
                           <span className="font-bold text-teal-600">
-                            {payload[1].value?.toFixed(2)} MB
+                            {formatTooltipMb(payload[1].value)} MB
                           </span>
                         </div>
                       </div>

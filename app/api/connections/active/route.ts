@@ -34,7 +34,7 @@ export async function GET() {
       return {
         id: user.id,
         username: user.username,
-        ipAddress: user.ipAddress || 'N/A',
+        ipAddress: user.allowedIps || 'N/A',
         endpoint: userData.endpoint || null,
         lastHandshake: userData.lastHandshake?.toISOString() || null,
         bytesReceived: user.bytesReceived.toString(),
