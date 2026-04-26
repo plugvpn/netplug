@@ -5,41 +5,35 @@ interface SetupStatus {
   vpnConfiguration?: any
 }
 
-// Cache setup status for 5 minutes
-let setupStatusCache: { status: SetupStatus; timestamp: number } | null = null
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes in milliseconds
+/** Single source of truth row (avoids ambiguous findFirst when multiple rows exist). */
+export async function getPrimarySystemConfig() {
+  return prisma.systemConfig.findFirst({
+    orderBy: { updatedAt: 'desc' },
+  })
+}
 
 export async function getSetupStatus(): Promise<SetupStatus> {
-  // Check cache
-  if (setupStatusCache && Date.now() - setupStatusCache.timestamp < CACHE_TTL) {
-    return setupStatusCache.status
-  }
+  const config = await getPrimarySystemConfig()
 
-  // Query database
-  const config = await prisma.systemConfig.findFirst()
-
-  const status: SetupStatus = {
+  return {
     isSetupComplete: config?.isSetupComplete ?? false,
     vpnConfiguration: config?.vpnConfiguration ?? undefined,
   }
-
-  // Update cache
-  setupStatusCache = {
-    status,
-    timestamp: Date.now(),
-  }
-
-  return status
 }
 
+/**
+ * Always reads the database (no in-memory cache). Used by `middleware.ts` and
+ * setup flows so a just-finished setup is not mistaken for incomplete.
+ */
 export async function isSetupComplete(): Promise<boolean> {
-  const status = await getSetupStatus()
-  return status.isSetupComplete
+  const config = await prisma.systemConfig.findFirst({
+    select: { isSetupComplete: true },
+  })
+  return config?.isSetupComplete ?? false
 }
 
 export async function markSetupComplete(vpnConfiguration: any): Promise<void> {
-  // Check if config already exists
-  const existingConfig = await prisma.systemConfig.findFirst()
+  const existingConfig = await getPrimarySystemConfig()
 
   if (existingConfig) {
     await prisma.systemConfig.update({
@@ -58,10 +52,7 @@ export async function markSetupComplete(vpnConfiguration: any): Promise<void> {
     })
   }
 
-  // Clear cache
-  clearSetupStatusCache()
 }
 
-export function clearSetupStatusCache(): void {
-  setupStatusCache = null
-}
+/** @deprecated No in-process cache; kept for call sites that cleared cache after setup. */
+export function clearSetupStatusCache(): void {}

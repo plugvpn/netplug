@@ -1,6 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import { getPrimarySystemConfig } from "@/lib/setup";
+import { syncUploadedWgConfPeersFromDatabase } from "@/lib/wireguard/uploaded-conf-sync";
 import fs from "fs/promises";
 import path from "path";
+
+export async function isWireGuardConfigUploaded(): Promise<boolean> {
+  const systemConfig = await getPrimarySystemConfig();
+  const wg = (systemConfig?.vpnConfiguration as any)?.wireGuard;
+  return wg?.configSource === "uploaded";
+}
 
 interface WireGuardConfig {
   enabled: boolean;
@@ -22,8 +30,22 @@ interface WireGuardConfig {
 export async function generateWireGuardConfig(): Promise<string | null> {
   try {
     // Get WireGuard configuration from SystemConfig
-    const systemConfig = await prisma.systemConfig.findFirst();
+    const systemConfig = await getPrimarySystemConfig();
     const vpnConfig = systemConfig?.vpnConfiguration as any;
+
+    if (vpnConfig?.wireGuard?.configSource === "uploaded") {
+      const dataDir = process.env.DATA_DIR;
+      if (!dataDir) return null;
+      const configPath = path.join(dataDir, "wg0.conf");
+      try {
+        return await fs.readFile(configPath, "utf-8");
+      } catch {
+        console.warn(
+          "[WireGuard] Uploaded config mode but wg0.conf is missing on disk"
+        );
+        return null;
+      }
+    }
 
     if (!vpnConfig?.wireGuard) {
       console.warn('WireGuard configuration not found in database');
@@ -96,8 +118,8 @@ ListenPort = ${wgConfig.serverPort}
       config += `\n# ========== Client Peers ==========\n`;
 
       for (const user of users) {
-        if (!user.ipAddress) {
-          console.warn(`User ${user.username} has no IP address assigned, skipping`);
+        if (!user.allowedIps) {
+          console.warn(`User ${user.username} has no allowed IPs assigned, skipping`);
           continue;
         }
 
@@ -117,7 +139,7 @@ ListenPort = ${wgConfig.serverPort}
           config += `PresharedKey = ${user.presharedKey}\n`;
         }
 
-        config += `AllowedIPs = ${user.ipAddress}/32\n`;
+        config += `AllowedIPs = ${user.allowedIps}\n`;
 
         if (wgConfig.persistentKeepalive > 0) {
           config += `PersistentKeepalive = ${wgConfig.persistentKeepalive}\n`;
@@ -139,22 +161,38 @@ ListenPort = ${wgConfig.serverPort}
  */
 export async function writeWireGuardConfig(): Promise<boolean> {
   try {
-    const config = await generateWireGuardConfig();
-    if (!config) {
-      console.error('Failed to generate WireGuard configuration');
-      return false;
-    }
-
     const dataDir = process.env.DATA_DIR;
     if (!dataDir) {
       console.error('DATA_DIR environment variable is not set');
       return false;
     }
 
-    // Ensure DATA_DIR exists
     await fs.mkdir(dataDir, { recursive: true });
 
     const configPath = path.join(dataDir, 'wg0.conf');
+
+    if (await isWireGuardConfigUploaded()) {
+      try {
+        await fs.access(configPath);
+      } catch {
+        console.error(
+          '[WireGuard] Uploaded config mode but wg0.conf is missing; cannot reload'
+        );
+        return false;
+      }
+      const synced = await syncUploadedWgConfPeersFromDatabase();
+      if (!synced) {
+        console.error('[WireGuard] Failed to merge DB peers into uploaded wg0.conf');
+        return false;
+      }
+      return true;
+    }
+
+    const config = await generateWireGuardConfig();
+    if (!config) {
+      console.error('Failed to generate WireGuard configuration');
+      return false;
+    }
 
     // Write configuration file
     await fs.writeFile(configPath, config, 'utf-8');
@@ -188,7 +226,7 @@ export async function generateClientConfig(userId: string): Promise<string | nul
     }
 
     // Get WireGuard configuration
-    const systemConfig = await prisma.systemConfig.findFirst();
+    const systemConfig = await getPrimarySystemConfig();
     const vpnConfig = systemConfig?.vpnConfiguration as any;
 
     if (!vpnConfig?.wireGuard) {
@@ -217,7 +255,7 @@ export async function generateClientConfig(userId: string): Promise<string | nul
       config += `PrivateKey = <CLIENT_PRIVATE_KEY_NOT_GENERATED>\n`;
     }
 
-    config += `Address = ${user.ipAddress}/32
+    config += `Address = ${user.allowedIps?.split(',')[0] || ''}
 DNS = ${wgConfig.dns}
 MTU = ${wgConfig.mtu}
 

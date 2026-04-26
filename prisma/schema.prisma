@@ -111,7 +111,7 @@ model VPNUser {
   id                  String    @id @default(cuid())
   username            String    @unique
   commonName          String?   // For VPN
-  ipAddress           String?
+  allowedIps          String?   // Comma-separated list of IPs/subnets in CIDR notation
   endpoint            String?   // WireGuard peer's real public IP:port
   lastHandshake       DateTime? // WireGuard last handshake timestamp
   privateKey          String?   // WireGuard client private key

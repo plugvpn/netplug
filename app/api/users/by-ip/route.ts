@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
+import { peerIpFromAllowedIps } from "@/lib/allowed-ips";
 
 // Helper function to get client IP from request headers
 function getClientIP(headersList: Headers): string | null {
@@ -41,10 +42,12 @@ export async function GET() {
       );
     }
 
-    // Find VPN user by IP address
+    // Find VPN user by IP address (check if IP is in allowedIps list)
     const user = await prisma.vPNUser.findFirst({
       where: {
-        ipAddress: ipAddress,
+        allowedIps: {
+          contains: ipAddress,
+        },
       },
       include: {
         server: {
@@ -75,7 +78,8 @@ export async function GET() {
     const sanitizedUser = {
       id: user.id,
       username: user.username,
-      ipAddress: user.ipAddress,
+      allowedIps: user.allowedIps,
+      ipAddress: peerIpFromAllowedIps(user.allowedIps),
       endpoint: user.endpoint, // Real public IP they're connecting from
       remainingDays: user.remainingDays,
       remainingTrafficBytes: user.remainingTrafficBytes?.toString(),

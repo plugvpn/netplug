@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { reloadWireGuardConfig } from "@/lib/wireguard/sync-service";
 import { requireAuth } from "@/lib/api-auth";
-
-// Helper function to serialize BigInt values recursively
-function serializeUser(user: any) {
-  return JSON.parse(JSON.stringify(user, (_key, value) =>
-    typeof value === 'bigint' ? value.toString() : value
-  ));
-}
+import { serializeVpnUserForApi } from "@/lib/vpn-user-api";
+import { normalizeIpList, peerIpFromAllowedIps } from "@/lib/allowed-ips";
+import { isIpInRange } from "@/lib/utils/ip-allocation";
 
 export async function PATCH(
   request: Request,
@@ -23,7 +19,70 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { username, serverId, commonName, remainingDays, remainingTrafficBytes, isEnabled } = body;
+    const { username, serverId, commonName, allowedIps, remainingDays, remainingTrafficBytes, isEnabled } = body;
+
+    const existing = await prisma.vPNUser.findUnique({
+      where: { id },
+      include: { server: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    let normalizedAllowedIps: string | undefined;
+
+    if (allowedIps !== undefined && existing.server.protocol === "wireguard") {
+      const entries = normalizeIpList(typeof allowedIps === "string" ? allowedIps : "");
+      if (entries.length === 0) {
+        return NextResponse.json(
+          { error: "Allowed IPs must include at least one CIDR entry for WireGuard users" },
+          { status: 400 },
+        );
+      }
+      for (const ip of entries) {
+        if (!ip.includes("/")) {
+          return NextResponse.json(
+            { error: "Each allowed IP must use CIDR notation (e.g. 10.5.10.2/32)" },
+            { status: 400 },
+          );
+        }
+      }
+
+      const systemConfig = await prisma.systemConfig.findFirst();
+      const vpnConfig = systemConfig?.vpnConfiguration as { wireGuard?: { clientAddressRange?: string } } | null;
+      const clientAddressRange = vpnConfig?.wireGuard?.clientAddressRange;
+      const firstHost = entries[0].split("/")[0];
+      if (clientAddressRange && !isIpInRange(firstHost, clientAddressRange)) {
+        return NextResponse.json(
+          {
+            error: `Tunnel address ${firstHost} must be within the configured client range: ${clientAddressRange}`,
+          },
+          { status: 400 },
+        );
+      }
+
+      normalizedAllowedIps = entries.join(",");
+      const newPeerIp = peerIpFromAllowedIps(normalizedAllowedIps);
+      if (newPeerIp) {
+        const peersOnServer = await prisma.vPNUser.findMany({
+          where: {
+            serverId: existing.serverId,
+            id: { not: id },
+            allowedIps: { not: null },
+          },
+          select: { allowedIps: true },
+        });
+        for (const other of peersOnServer) {
+          if (peerIpFromAllowedIps(other.allowedIps) === newPeerIp) {
+            return NextResponse.json(
+              { error: `Tunnel IP ${newPeerIp} is already assigned to another user on this server` },
+              { status: 400 },
+            );
+          }
+        }
+      }
+    }
 
     const user = await prisma.vPNUser.update({
       where: { id },
@@ -31,6 +90,7 @@ export async function PATCH(
         ...(username !== undefined && { username }),
         ...(serverId !== undefined && { serverId }),
         ...(commonName !== undefined && { commonName }),
+        ...(normalizedAllowedIps !== undefined && { allowedIps: normalizedAllowedIps }),
         ...(remainingDays !== undefined && { remainingDays }),
         ...(remainingTrafficBytes !== undefined && { remainingTrafficBytes: remainingTrafficBytes ? BigInt(remainingTrafficBytes) : null }),
         ...(isEnabled !== undefined && { isEnabled }),
@@ -49,7 +109,7 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       message: "User updated successfully",
-      user: serializeUser(user),
+      user: serializeVpnUserForApi(user),
     });
   } catch (error) {
     console.error('Failed to update user:', error);

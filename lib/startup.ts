@@ -1,5 +1,5 @@
 import { initializeWireGuard, startWireGuardSyncService, bringDownWireGuard } from './wireguard/sync-service';
-import { existsSync } from 'fs';
+import { existsSync, unlinkSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { execSync } from 'child_process';
@@ -13,8 +13,15 @@ let wireGuardSyncInterval: NodeJS.Timeout | null = null;
 // Track if cleanup has been executed
 let cleanupExecuted = false;
 
+/** Local prisma/sandbox DB is treated as disposable; see P3005 handling below. */
+function isDisposableSandboxDatabasePath(dbPath: string): boolean {
+  const normalized = dbPath.replace(/\\/g, '/');
+  return normalized.includes('/prisma/sandbox/');
+}
+
 /**
- * Initialize database if it doesn't exist
+ * Ensure the SQLite file parent directory exists and apply migrations.
+ * Runs on every server start so the DB schema always matches the codebase.
  */
 async function initializeDatabase() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -32,38 +39,65 @@ async function initializeDatabase() {
     return false;
   }
 
-  // Resolve path relative to prisma directory
+  // Resolve path the same way Prisma does: relative to the prisma/ directory
   const prismaDir = resolve(process.cwd(), 'prisma');
   const dbPath = resolve(prismaDir, fileMatch[1]);
 
-  console.log(`[Startup] Checking database at: ${dbPath}`);
-
-  // Check if database file exists
-  if (existsSync(dbPath)) {
-    console.log('[Startup] ✓ Database file exists');
-    return true;
-  }
-
-  console.log('[Startup] Database file not found, initializing...');
+  console.log(`[Startup] Database file: ${dbPath}`);
 
   try {
-    // Ensure directory exists
     const dbDir = dirname(dbPath);
-    console.log(`[Startup] Creating directory: ${dbDir}`);
     await mkdir(dbDir, { recursive: true });
 
-    // Run Prisma migrations to create database and schema
-    console.log('[Startup] Running Prisma migrations...');
-    execSync('prisma migrate deploy', {
-      cwd: process.cwd(),
-      stdio: 'inherit',
-      env: process.env,
-    });
+    console.log('[Startup] Applying Prisma migrations...');
 
-    console.log('[Startup] ✓ Database initialized successfully');
+    const maxMigrateAttempts = 2;
+    for (let attempt = 0; attempt < maxMigrateAttempts; attempt++) {
+      try {
+        const stdout = execSync('npx prisma migrate deploy', {
+          cwd: process.cwd(),
+          encoding: 'utf-8',
+          env: process.env,
+          stdio: ['inherit', 'pipe', 'pipe'],
+        });
+        if (stdout) {
+          process.stdout.write(stdout);
+        }
+        break;
+      } catch (migrateError: unknown) {
+        const err = migrateError as { stderr?: string; stdout?: string };
+        const combined = `${err.stderr ?? ''}${err.stdout ?? ''}`;
+        const isP3005 = combined.includes('P3005');
+
+        if (
+          isP3005 &&
+          isDisposableSandboxDatabasePath(dbPath) &&
+          existsSync(dbPath) &&
+          attempt < maxMigrateAttempts - 1
+        ) {
+          console.warn(
+            '[Startup] Database has tables but no Prisma migration history (P3005). ' +
+              'Removing disposable prisma/sandbox database once so migrations can apply.'
+          );
+          unlinkSync(dbPath);
+          continue;
+        }
+
+        console.error('[Startup] Failed to apply database migrations:', migrateError);
+        if (isP3005 && !isDisposableSandboxDatabasePath(dbPath)) {
+          console.error(
+            '[Startup] Baseline or reset this database, then run `npx prisma migrate deploy`. ' +
+              'See https://www.prisma.io/docs/guides/migrate/production-troubleshooting'
+          );
+        }
+        return false;
+      }
+    }
+
+    console.log('[Startup] ✓ Database schema is up to date');
     return true;
   } catch (error) {
-    console.error('[Startup] Failed to initialize database:', error);
+    console.error('[Startup] Failed to apply database migrations:', error);
     return false;
   }
 }

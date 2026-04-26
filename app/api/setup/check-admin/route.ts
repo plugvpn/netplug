@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isSetupComplete } from '@/lib/setup'
 
 export async function GET() {
   try {
@@ -8,8 +9,11 @@ export async function GET() {
       where: { role: 'admin' }
     })
 
+    const setupComplete = await isSetupComplete()
+
     return NextResponse.json({
       hasAdmin: adminCount > 0,
+      setupComplete,
     })
   } catch (error) {
     console.error('Error checking for admin user:', error)

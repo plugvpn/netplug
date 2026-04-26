@@ -23,7 +23,7 @@ interface VPNUserStatus {
   user: {
     id: string;
     username: string;
-    ipAddress: string;
+    allowedIps: string;
     endpoint: string | null;
     remainingDays: number | null;
     remainingTrafficBytes: string | null;
@@ -241,8 +241,8 @@ export default function StatusPage() {
               <div className="flex items-center gap-3">
                 <Wifi className="h-5 w-5 text-gray-500" />
                 <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">VPN IP Address</div>
-                  <div className="text-sm font-mono font-medium text-gray-900 dark:text-gray-100">{userStatus.user.ipAddress}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Allowed IPs</div>
+                  <div className="text-sm font-mono font-medium text-gray-900 dark:text-gray-100">{userStatus.user.allowedIps}</div>
                 </div>
               </div>
               <div className="flex items-center gap-3">

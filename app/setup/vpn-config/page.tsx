@@ -1,12 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef } from 'react'
+
+type SetupMode = 'wizard' | 'upload'
+
+function goToDashboardAfterSetup() {
+  window.location.assign('/dashboard')
+}
 
 export default function VPNConfigPage() {
-  const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [setupMode, setSetupMode] = useState<SetupMode>('wizard')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const [uploadServerHost, setUploadServerHost] = useState('')
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
 
   const [wireGuardEnabled, setWireGuardEnabled] = useState(true)
   const [wireGuardConfig, setWireGuardConfig] = useState({
@@ -157,17 +166,52 @@ export default function VPNConfigPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleUploadSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError('')
 
-    // Validate WireGuard is enabled
+    if (!uploadServerHost.trim()) {
+      setError('Enter the public server hostname or IP (used for client configs).')
+      return
+    }
+    if (!uploadFile) {
+      setError('Choose a wg0.conf file to upload.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', uploadFile)
+      formData.append('serverHost', uploadServerHost.trim())
+
+      const response = await fetch('/api/setup/wg-conf', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to apply configuration')
+        setLoading(false)
+        return
+      }
+
+      goToDashboardAfterSetup()
+    } catch {
+      setError('An unexpected error occurred')
+      setLoading(false)
+    }
+  }
+
+  const completeSetup = async () => {
+    setError('')
+
     if (!wireGuardEnabled) {
       setError('WireGuard VPN must be enabled')
       return
     }
 
-    // Validate key pair exists
     if (!keyPair.privateKey || !keyPair.publicKey) {
       setError('WireGuard key pair is required')
       return
@@ -176,7 +220,7 @@ export default function VPNConfigPage() {
     setLoading(true)
 
     try {
-      const wireGuardData: any = {
+      const wireGuardData: Record<string, unknown> = {
         ...wireGuardConfig,
         enabled: true,
         privateKey: keyPair.privateKey,
@@ -184,9 +228,8 @@ export default function VPNConfigPage() {
         dns: dnsServers.join(', '),
       }
 
-      // Only include FwMark if enabled and has a valid value
       if (fwMarkEnabled && fwMark && fwMark !== '-') {
-        const fwMarkValue = parseInt(fwMark)
+        const fwMarkValue = parseInt(fwMark, 10)
         if (!isNaN(fwMarkValue) && fwMarkValue > 0) {
           wireGuardData.fwMark = fwMarkValue
         }
@@ -195,25 +238,47 @@ export default function VPNConfigPage() {
       const response = await fetch('/api/setup/vpn-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          wireGuard: wireGuardData,
-        }),
+        body: JSON.stringify({ wireGuard: wireGuardData }),
+        credentials: 'same-origin',
       })
 
-      const data = await response.json()
+      const raw = await response.text()
+      let data: { error?: string } = {}
+      if (raw) {
+        try {
+          data = JSON.parse(raw) as { error?: string }
+        } catch {
+          setError('Server returned an invalid response. Check the app logs.')
+          setLoading(false)
+          return
+        }
+      }
 
       if (!response.ok) {
-        setError(data.error || 'Failed to save configuration')
+        const message = data.error || 'Failed to save configuration'
+        if (
+          response.status === 400 &&
+          typeof message === 'string' &&
+          message.toLowerCase().includes('already been completed')
+        ) {
+          goToDashboardAfterSetup()
+          return
+        }
+        setError(message)
         setLoading(false)
         return
       }
 
-      // Redirect to dashboard
-      router.push('/dashboard')
-    } catch (err) {
+      goToDashboardAfterSetup()
+    } catch {
       setError('An unexpected error occurred')
       setLoading(false)
     }
+  }
+
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    void completeSetup()
   }
 
   return (
@@ -234,7 +299,116 @@ export default function VPNConfigPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="mb-6 flex rounded-lg border border-slate-600 bg-slate-900/40 p-1">
+        <button
+          type="button"
+          onClick={() => {
+            setSetupMode('wizard')
+            setError('')
+          }}
+          disabled={loading}
+          className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+            setupMode === 'wizard'
+              ? 'bg-slate-700 text-white shadow'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Guided setup
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setSetupMode('upload')
+            setError('')
+          }}
+          disabled={loading}
+          className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+            setupMode === 'upload'
+              ? 'bg-emerald-600/30 text-emerald-200 shadow border border-emerald-500/40'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Upload wg0.conf
+        </button>
+      </div>
+
+      {setupMode === 'upload' ? (
+        <form onSubmit={handleUploadSubmit} className="space-y-6">
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-6 space-y-5">
+            <p className="text-sm text-slate-300">
+              Use this only during initial setup. The file is copied to the server data directory as{' '}
+              <code className="text-emerald-300/90">wg0.conf</code> and brought up with{' '}
+              <code className="text-emerald-300/90">wg-quick</code>. The dashboard will keep this file
+              as-is on reload; add or change peers in the file on disk if you manage WireGuard outside
+              the wizard. Each <code className="text-emerald-300/90">[Peer]</code> becomes a VPN user. Peers may mix
+              some with <code className="text-emerald-300/90"># User: myname</code> immediately above{' '}
+              <code className="text-emerald-300/90">[Peer]</code> and some without: a real label becomes{' '}
+              <strong className="text-slate-200">username</strong>. If that line is missing, empty, or only a
+              placeholder like <code className="text-emerald-300/90">{"# User: <username>"}</code>, the tunnel
+              IPv4 is used instead (first <code className="text-emerald-300/90">AllowedIPs</code> address in your VPN
+              client subnet, else the first IPv4 in the list). After import, peers are normalized with{' '}
+              <code className="text-emerald-300/90"># User: …</code> before each <code className="text-emerald-300/90">[Peer]</code>.
+              Dashboard saves update this file. Peers without <code className="text-emerald-300/90">AllowedIPs</code>{' '}
+              are skipped.
+            </p>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Public server host
+              </label>
+              <input
+                type="text"
+                value={uploadServerHost}
+                onChange={(e) => setUploadServerHost(e.target.value)}
+                className="w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                placeholder="vpn.example.com or 203.0.113.10"
+                disabled={loading}
+                autoComplete="off"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Hostname or IP clients use to reach this server (not in wg0.conf).
+              </p>
+            </div>
+
+            <div>
+              <span className="block text-sm font-medium text-slate-300 mb-2">wg0.conf file</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".conf,text/plain"
+                className="hidden"
+                disabled={loading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  setUploadFile(f ?? null)
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Choose file
+                </button>
+                <span className="text-sm text-slate-400 font-mono truncate max-w-full">
+                  {uploadFile ? uploadFile.name : 'No file selected'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Applying configuration…' : 'Complete setup with uploaded file'}
+          </button>
+        </form>
+      ) : (
+      <form noValidate onSubmit={handleFormSubmit} className="space-y-6">
         {/* WireGuard Section */}
         <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-6">
           <div className="mb-4 flex items-center justify-between">
@@ -568,13 +742,15 @@ export default function VPNConfigPage() {
         </div>
 
         <button
-          type="submit"
+          type="button"
           disabled={loading}
+          onClick={() => void completeSetup()}
           className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? 'Saving Configuration...' : 'Complete Setup'}
         </button>
       </form>
+      )}
     </div>
   )
 }

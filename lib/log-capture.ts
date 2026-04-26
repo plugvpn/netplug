@@ -4,8 +4,34 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { createWriteStream, WriteStream } from 'fs';
+
+function resolveLogFilePath(): string {
+  if (process.env.LOG_FILE) {
+    return path.resolve(process.env.LOG_FILE);
+  }
+
+  const dataDir = process.env.DATA_DIR;
+  if (dataDir) {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.accessSync(dataDir, fs.constants.W_OK);
+      return path.join(dataDir, 'server.log');
+    } catch {
+      // Volume or path not writable for this user (e.g. uid mismatch)
+    }
+  }
+
+  const cwd = process.cwd();
+  try {
+    fs.accessSync(cwd, fs.constants.W_OK);
+    return path.join(cwd, 'server.log');
+  } catch {
+    return path.join(os.tmpdir(), 'netplug-server.log');
+  }
+}
 
 export interface LogEntry {
   id: string;
@@ -28,8 +54,7 @@ class LogCaptureService {
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
 
-    // Set log file path in project root
-    this.logFilePath = path.join(process.cwd(), 'server.log');
+    this.logFilePath = resolveLogFilePath();
   }
 
   /**
