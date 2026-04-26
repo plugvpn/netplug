@@ -22,7 +22,7 @@ export async function getSetupStatus(): Promise<SetupStatus> {
 }
 
 /**
- * Always reads the database (no in-memory cache). Used by `middleware.ts` and
+ * Always reads the database (no in-memory cache). Used by `proxy.ts` and
  * setup flows so a just-finished setup is not mistaken for incomplete.
  */
 export async function isSetupComplete(): Promise<boolean> {

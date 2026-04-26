@@ -20,6 +20,8 @@ interface WireGuardConfig {
   mtu: number;
   persistentKeepalive: number;
   allowedIps: string;
+  preUp?: string;
+  preDown?: string;
   postUp?: string;
   postDown?: string;
 }
@@ -93,9 +95,15 @@ Address = ${serverAddress}
 ListenPort = ${wgConfig.serverPort}
 `;
 
-    // Add PostUp/PostDown if configured
+    // wg-quick hooks: PreUp, PostUp, PreDown, PostDown
+    if (wgConfig.preUp) {
+      config += `PreUp = ${wgConfig.preUp}\n`;
+    }
     if (wgConfig.postUp) {
       config += `PostUp = ${wgConfig.postUp}\n`;
+    }
+    if (wgConfig.preDown) {
+      config += `PreDown = ${wgConfig.preDown}\n`;
     }
     if (wgConfig.postDown) {
       config += `PostDown = ${wgConfig.postDown}\n`;

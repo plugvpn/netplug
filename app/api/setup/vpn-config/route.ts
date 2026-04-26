@@ -78,7 +78,9 @@ export async function POST(request: NextRequest) {
         mtu: parseInt(wireGuard.mtu) || 1420,
         persistentKeepalive: parseInt(wireGuard.persistentKeepalive) || 25,
         allowedIps: wireGuard.allowedIps || '0.0.0.0/0, ::/0',
-        // Advanced
+        // Advanced (wg-quick hooks)
+        preUp: wireGuard.preUp || '',
+        preDown: wireGuard.preDown || '',
         postUp: wireGuard.postUp || '',
         postDown: wireGuard.postDown || '',
       },
@@ -148,7 +150,7 @@ export async function POST(request: NextRequest) {
       message: 'Setup completed successfully',
     })
 
-    // Set cookie to track setup completion (for middleware)
+    // Set cookie to track setup completion (for root proxy)
     response.cookies.set('setup-complete', 'true', {
       httpOnly: true,
       secure: secureSetupCookie(),

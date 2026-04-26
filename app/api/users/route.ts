@@ -5,6 +5,7 @@ import { reloadWireGuardConfig } from "@/lib/wireguard/sync-service";
 import { requireAuth } from "@/lib/api-auth";
 import { serializeVpnUserForApi } from "@/lib/vpn-user-api";
 import { normalizeIpList, peerIpFromAllowedIps } from "@/lib/allowed-ips";
+import { normalizePeerIconForApi } from "@/lib/peer-icons";
 
 export async function GET() {
   // Require authentication
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { username, serverId, commonName, allowedIps, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficBytes } = body;
+    const { username, serverId, commonName, allowedIps, privateKey: providedPrivateKey, publicKey: providedPublicKey, presharedKey: providedPresharedKey, remainingDays, remainingTrafficBytes, peerIcon: bodyPeerIcon } = body;
 
     // Validate required fields
     if (!username || !serverId) {
@@ -203,6 +204,8 @@ export async function POST(request: Request) {
       }
     }
 
+    const peerIcon = normalizePeerIconForApi(bodyPeerIcon);
+
     // Create the user
     const user = await prisma.vPNUser.create({
       data: {
@@ -216,6 +219,7 @@ export async function POST(request: Request) {
         remainingDays: remainingDays || null,
         remainingTrafficBytes: remainingTrafficBytes ? BigInt(remainingTrafficBytes) : null,
         isEnabled: true,
+        peerIcon,
       },
       include: {
         server: true,

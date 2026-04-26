@@ -126,6 +126,8 @@ export async function POST(request: NextRequest) {
             ? firstPeerKeepalive
             : 25,
         allowedIps: '0.0.0.0/0, ::/0',
+        preUp: parsed.interface.preUp || '',
+        preDown: parsed.interface.preDown || '',
         postUp: parsed.interface.postUp || '',
         postDown: parsed.interface.postDown || '',
         ...(parsed.interface.fwMark !== undefined &&

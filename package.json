@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
+    "prebuild": "mkdir -p sandbox/data && (test -f sandbox/data/server.log || touch sandbox/data/server.log)",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

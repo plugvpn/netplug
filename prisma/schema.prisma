@@ -132,27 +132,14 @@ model VPNUser {
   isConnected         Boolean   @default(false)
   isEnabled           Boolean   @default(true)
   serverId            String
+  /** Lucide icon name for dashboard avatar (e.g. User, Laptop); null = default User */
+  peerIcon            String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
   server              VPNServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
 
   @@index([serverId])
-}
-
-// Obfuscation servers (TrustTunnel, UDP2RAW, etc.)
-model ObfuscationServer {
-  id          String   @id @default(cuid())
-  name        String
-  type        String   // "trusttunnel" or "udp2raw"
-  host        String
-  port        Int
-  targetHost  String?  // Target VPN server host
-  targetPort  Int?     // Target VPN server port
-  isActive    Boolean  @default(true)
-  config      Json?    // Additional configuration options
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 }
 
 // Bandwidth snapshots for time series charts

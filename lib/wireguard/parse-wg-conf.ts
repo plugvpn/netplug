@@ -4,6 +4,8 @@ export interface ParsedWgInterface {
   addressRaw: string
   mtu?: number
   dns?: string
+  preUp?: string
+  preDown?: string
   postUp?: string
   postDown?: string
   fwMark?: number
@@ -109,6 +111,8 @@ export function parseWgQuickServerConf(content: string): ParsedWgServerConf {
       else if (key === 'address') iface.addressRaw = v
       else if (key === 'mtu') iface.mtu = parseInt(v, 10)
       else if (key === 'dns') iface.dns = v
+      else if (key === 'preup') iface.preUp = v
+      else if (key === 'predown') iface.preDown = v
       else if (key === 'postup') iface.postUp = v
       else if (key === 'postdown') iface.postDown = v
       else if (key === 'fwmark') iface.fwMark = parseInt(v, 10)
@@ -143,6 +147,8 @@ export function parseWgQuickServerConf(content: string): ParsedWgServerConf {
       addressRaw: iface.addressRaw,
       mtu: iface.mtu,
       dns: iface.dns,
+      preUp: iface.preUp,
+      preDown: iface.preDown,
       postUp: iface.postUp,
       postDown: iface.postDown,
       fwMark: iface.fwMark,

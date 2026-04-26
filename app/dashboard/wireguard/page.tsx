@@ -2,11 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
-import { Server, Save, RefreshCw, Copy, Check } from "lucide-react";
+import {
+  Server,
+  Save,
+  RefreshCw,
+  Copy,
+  Check,
+  Settings,
+  Globe,
+  Eye,
+  EyeOff,
+  SlidersHorizontal,
+  KeyRound,
+} from "lucide-react";
 
 interface WireGuardConfig {
   enabled: boolean;
-  configSource?: "wizard" | "uploaded";
   serverHost: string;
   serverPort: number;
   serverAddress: string;
@@ -15,6 +26,8 @@ interface WireGuardConfig {
   mtu: number;
   persistentKeepalive: number;
   allowedIps: string;
+  preUp?: string;
+  preDown?: string;
   postUp?: string;
   postDown?: string;
 }
@@ -29,6 +42,30 @@ interface ServerInfo {
   isActive: boolean;
   privateKey: string | null;
   publicKey: string | null;
+}
+
+/** From `wg show` — whether the tunnel is actually up (not DB isActive). */
+interface WireGuardLiveStatus {
+  up: boolean;
+  interfaceName?: string;
+  listenPort?: number;
+}
+
+function formatUptime(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
+    return '—';
+  }
+  if (totalSeconds < 60) {
+    return `${Math.floor(totalSeconds)}s`;
+  }
+  const d = Math.floor(totalSeconds / 86400);
+  const h = Math.floor((totalSeconds % 86400) / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const parts: string[] = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (d > 0 || h > 0) parts.push(`${h}h`);
+  parts.push(`${m}m`);
+  return parts.join(' ');
 }
 
 // Move component definitions outside to prevent focus loss
@@ -92,11 +129,18 @@ export default function WireguardConfigPage() {
   const [config, setConfig] = useState<WireGuardConfig | null>(null);
   const [originalConfig, setOriginalConfig] = useState<WireGuardConfig | null>(null);
   const [server, setServer] = useState<ServerInfo | null>(null);
+  const [live, setLive] = useState<WireGuardLiveStatus | null>(null);
+  const [hostUptimeSeconds, setHostUptimeSeconds] = useState<number | null>(null);
+  const [tunnelUptimeSeconds, setTunnelUptimeSeconds] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [publicKeyCopied, setPublicKeyCopied] = useState(false);
+  const [privateKeyCopied, setPrivateKeyCopied] = useState(false);
+  const [privateKeyDraft, setPrivateKeyDraft] = useState('');
+  const [originalPrivateKey, setOriginalPrivateKey] = useState('');
+  const [privateKeyVisible, setPrivateKeyVisible] = useState(false);
 
   useEffect(() => {
     document.title = "Wireguard | NetPlug Dashboard";
@@ -113,6 +157,12 @@ export default function WireguardConfigPage() {
         setLoadError('You need to sign in again to view WireGuard settings.');
         setConfig(null);
         setServer(null);
+        setLive(null);
+        setHostUptimeSeconds(null);
+        setTunnelUptimeSeconds(null);
+        setPrivateKeyDraft('');
+        setOriginalPrivateKey('');
+        setPrivateKeyVisible(false);
         return;
       }
 
@@ -124,6 +174,12 @@ export default function WireguardConfigPage() {
         );
         setConfig(null);
         setServer(null);
+        setLive(null);
+        setHostUptimeSeconds(null);
+        setTunnelUptimeSeconds(null);
+        setPrivateKeyDraft('');
+        setOriginalPrivateKey('');
+        setPrivateKeyVisible(false);
         return;
       }
 
@@ -131,17 +187,47 @@ export default function WireguardConfigPage() {
         setLoadError('WireGuard configuration is missing from the server.');
         setConfig(null);
         setServer(null);
+        setLive(null);
+        setHostUptimeSeconds(null);
+        setTunnelUptimeSeconds(null);
+        setPrivateKeyDraft('');
+        setOriginalPrivateKey('');
+        setPrivateKeyVisible(false);
         return;
       }
 
       setConfig(data.config);
       setOriginalConfig(data.config);
       setServer(data.server ?? null);
+      const pk = (data.server as ServerInfo | null)?.privateKey ?? '';
+      setPrivateKeyDraft(pk);
+      setOriginalPrivateKey(pk);
+      setPrivateKeyVisible(false);
+      const livePayload = data.live as WireGuardLiveStatus | undefined;
+      setLive(
+        livePayload && typeof livePayload.up === 'boolean'
+          ? livePayload
+          : { up: false },
+      );
+      const hostSec = data.hostUptimeSeconds;
+      setHostUptimeSeconds(
+        typeof hostSec === 'number' && Number.isFinite(hostSec) ? hostSec : null,
+      );
+      const tunSec = data.tunnelUptimeSeconds;
+      setTunnelUptimeSeconds(
+        typeof tunSec === 'number' && Number.isFinite(tunSec) ? tunSec : null,
+      );
     } catch (error) {
       console.error('Failed to fetch WireGuard configuration:', error);
       setLoadError('Network error while loading WireGuard configuration.');
       setConfig(null);
       setServer(null);
+      setLive(null);
+      setHostUptimeSeconds(null);
+      setTunnelUptimeSeconds(null);
+      setPrivateKeyDraft('');
+      setOriginalPrivateKey('');
+      setPrivateKeyVisible(false);
     } finally {
       setLoading(false);
     }
@@ -149,6 +235,7 @@ export default function WireguardConfigPage() {
 
   const hasChanges = () => {
     if (!config || !originalConfig) return false;
+    if (privateKeyDraft !== originalPrivateKey) return true;
     return JSON.stringify(config) !== JSON.stringify(originalConfig);
   };
 
@@ -157,6 +244,8 @@ export default function WireguardConfigPage() {
       setConfig(originalConfig);
       setSaveMessage(null);
     }
+    setPrivateKeyDraft(originalPrivateKey);
+    setPrivateKeyVisible(false);
   };
 
   const handleSave = async () => {
@@ -166,15 +255,34 @@ export default function WireguardConfigPage() {
     setSaveMessage(null);
 
     try {
+      const payload: { config: WireGuardConfig; serverPrivateKey?: string } = {
+        config,
+      };
+      if (privateKeyDraft !== originalPrivateKey) {
+        payload.serverPrivateKey = privateKeyDraft;
+      }
       const response = await fetch('/api/wireguard', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
-        setSaveMessage({ type: 'success', text: 'Configuration saved successfully!' });
+        const data = await response.json().catch(() => ({}));
+        const writeFailed = data.wireGuardWriteOk === false;
+        const reloadFailed = data.wireGuardReloaded === false;
+        setSaveMessage({
+          type: writeFailed || reloadFailed ? 'error' : 'success',
+          text:
+            typeof data.message === 'string'
+              ? data.message
+              : 'Configuration saved successfully!',
+        });
         setOriginalConfig(config);
+        if (privateKeyDraft !== originalPrivateKey) {
+          setOriginalPrivateKey(privateKeyDraft);
+        }
+        void fetchConfig();
       } else {
         const data = await response.json();
         setSaveMessage({ type: 'error', text: data.error || 'Failed to save configuration' });
@@ -203,6 +311,26 @@ export default function WireguardConfigPage() {
       console.error('Failed to copy public key:', error);
     }
   };
+
+  const handleCopyPrivateKey = async () => {
+    if (!privateKeyDraft) return;
+    try {
+      await navigator.clipboard.writeText(privateKeyDraft);
+      setPrivateKeyCopied(true);
+      setTimeout(() => setPrivateKeyCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy private key:', error);
+    }
+  };
+
+  const uptimeDisplaySeconds =
+    live?.up && tunnelUptimeSeconds != null
+      ? tunnelUptimeSeconds
+      : hostUptimeSeconds;
+  const uptimeCaption =
+    live?.up && tunnelUptimeSeconds != null
+      ? 'WireGuard tunnel'
+      : 'This system';
 
   if (loading) {
     return (
@@ -271,175 +399,292 @@ export default function WireguardConfigPage() {
             </p>
           </div>
 
-          {config.configSource === 'uploaded' && (
-            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-              <p className="font-medium">Initial setup used an uploaded wg0.conf</p>
-              <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">
-                Dashboard values below are for display and client exports. The live interface file{' '}
-                <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">wg0.conf</code> is
-                not regenerated from this form; edit the file on disk (under DATA_DIR) or use Save to
-                update metadata only.
-              </p>
-            </div>
-          )}
-
           <div className="space-y-6">
             {/* Server Status */}
             <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-6 flex items-center gap-3">
-              <Server className="h-5 w-5 text-emerald-600 dark:text-emerald-500" strokeWidth={1.5} />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Server Status</h2>
-            </div>
-            {server && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Server Name</span>
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{server.name}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Status</span>
-                  <div className="flex items-center gap-2">
-                    <div className={`h-2 w-2 rounded-full ${server.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {server.isActive ? 'Active' : 'Inactive'}
-                    </span>
+              {server ? (
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
+                  <div>
+                    <div className="mb-6 flex items-center gap-2">
+                      <Server
+                        className="h-5 w-5 text-emerald-600 dark:text-emerald-500"
+                        strokeWidth={1.5}
+                      />
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                        Server Status
+                      </h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="shrink-0 text-sm text-gray-700 dark:text-gray-300">Server Name</span>
+                        <span className="min-w-0 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {server.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="shrink-0 text-sm text-gray-700 dark:text-gray-300">Interface status</span>
+                        <div className="flex min-w-0 flex-col items-end gap-0.5 text-right">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`h-2 w-2 rounded-full ${
+                                live?.up ? 'bg-green-500' : 'bg-red-500'
+                              }`}
+                            />
+                            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {live?.up ? 'Running' : 'Not running'}
+                            </span>
+                          </div>
+                          {live?.up && live.interfaceName && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {live.interfaceName}
+                              {typeof live.listenPort === 'number' && !Number.isNaN(live.listenPort)
+                                ? ` · listen ${live.listenPort}`
+                                : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="shrink-0 text-sm text-gray-700 dark:text-gray-300">Uptime</span>
+                        <div className="flex min-w-0 flex-col items-end gap-0.5 text-right">
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {uptimeDisplaySeconds != null
+                              ? formatUptime(uptimeDisplaySeconds)
+                              : '—'}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {uptimeCaption}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="shrink-0 text-sm text-gray-700 dark:text-gray-300">Config Path</span>
+                        <span className="min-w-0 break-all text-right font-mono text-sm text-gray-900 dark:text-gray-100">
+                          {server.configPath}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Config Path</span>
-                  <span className="font-mono text-sm text-gray-900 dark:text-gray-100">{server.configPath}</span>
-                </div>
-                <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Server Public Key</span>
-                    {server.publicKey && (
-                      <button
-                        onClick={handleCopyPublicKey}
-                        className="flex items-center gap-1.5 rounded-md border border-emerald-600 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
-                      >
-                        {publicKeyCopied ? (
-                          <>
-                            <Check className="h-3.5 w-3.5" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-3.5 w-3.5" />
-                            Copy
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                  {server.publicKey ? (
-                    <>
+
+                  <div className="space-y-1.5 lg:border-l lg:border-gray-200 lg:pl-10 dark:lg:border-gray-700">
+                    <div className="mb-6 flex items-center gap-2">
+                      <KeyRound
+                        className="h-5 w-5 text-emerald-600 dark:text-emerald-500"
+                        strokeWidth={1.5}
+                      />
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Keys</h3>
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Server Private Key
+                      </span>
                       <div className="relative">
                         <input
-                          type="text"
-                          value={server.publicKey}
-                          readOnly
-                          className="w-full cursor-text rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                          type={privateKeyVisible ? "text" : "password"}
+                          value={privateKeyDraft}
+                          onChange={(e) => setPrivateKeyDraft(e.target.value)}
+                          spellCheck={false}
+                          autoComplete="off"
+                          className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-[4.25rem] font-mono text-xs text-gray-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                          placeholder="WireGuard interface private key"
                         />
+                        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setPrivateKeyVisible((v) => !v)}
+                            title={privateKeyVisible ? "Hide private key" : "Show private key"}
+                            aria-label={privateKeyVisible ? "Hide private key" : "Show private key"}
+                            aria-pressed={privateKeyVisible}
+                            className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                          >
+                            {privateKeyVisible ? (
+                              <EyeOff className="h-4 w-4" strokeWidth={1.5} />
+                            ) : (
+                              <Eye className="h-4 w-4" strokeWidth={1.5} />
+                            )}
+                          </button>
+                          {privateKeyDraft ? (
+                            <button
+                              type="button"
+                              onClick={handleCopyPrivateKey}
+                              title={privateKeyCopied ? "Copied" : "Copy private key"}
+                              aria-label={privateKeyCopied ? "Copied" : "Copy private key"}
+                              className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                            >
+                              {privateKeyCopied ? (
+                                <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" strokeWidth={1.5} />
+                              ) : (
+                                <Copy className="h-4 w-4" strokeWidth={1.5} />
+                              )}
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
-                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Share this public key with clients connecting to this server
-                      </p>
-                    </>
-                  ) : (
-                    <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900 dark:bg-yellow-950">
-                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        Public key not available. Re-run setup or check that the WireGuard server row
-                        exists in the database.
+                      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        Hidden by default. The public key is derived when you save.
                       </p>
                     </div>
-                  )}
+
+                    <div className="mt-8 border-t border-gray-200 pt-8 dark:border-gray-700">
+                      <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Server Public Key
+                      </span>
+                      {server.publicKey ? (
+                        <>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={server.publicKey}
+                              readOnly
+                              className="w-full cursor-text rounded-lg border border-gray-200 bg-gray-50 py-2 pl-3 pr-10 font-mono text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleCopyPublicKey}
+                              title={publicKeyCopied ? "Copied" : "Copy public key"}
+                              aria-label={publicKeyCopied ? "Copied" : "Copy public key"}
+                              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200/80 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                            >
+                              {publicKeyCopied ? (
+                                <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" strokeWidth={1.5} />
+                              ) : (
+                                <Copy className="h-4 w-4" strokeWidth={1.5} />
+                              )}
+                            </button>
+                          </div>
+                          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                            Share this public key with clients connecting to this server
+                          </p>
+                        </>
+                      ) : (
+                        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900 dark:bg-yellow-950">
+                          <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                            Public key not available. Re-run setup or check that the WireGuard server row
+                            exists in the database.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Server record not loaded. Refresh or check the database.
+                </p>
+              )}
+            </div>
+
+            {/* Server Settings (left) + Network Settings (right) */}
+            <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
+                <div>
+                  <div className="mb-6 flex items-center gap-2">
+                    <Settings className="h-5 w-5 text-emerald-600 dark:text-emerald-500" strokeWidth={1.5} />
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Server Settings</h3>
+                  </div>
+                  <div className="space-y-0">
+                    <InputField
+                      label="Server Host"
+                      value={config.serverHost}
+                      field="serverHost"
+                      placeholder="e.g., vpn.example.com or 192.168.1.1"
+                      onChange={updateConfig}
+                    />
+                    <InputField
+                      label="Server Port"
+                      value={config.serverPort}
+                      field="serverPort"
+                      type="number"
+                      placeholder="e.g., 51820"
+                      onChange={updateConfig}
+                    />
+                    <InputField
+                      label="Server Address"
+                      value={config.serverAddress}
+                      field="serverAddress"
+                      placeholder="e.g., 10.0.0.1/24"
+                      onChange={updateConfig}
+                    />
+                    <InputField
+                      label="Client Address Range"
+                      value={config.clientAddressRange}
+                      field="clientAddressRange"
+                      placeholder="e.g., 10.0.0.0/24"
+                      onChange={updateConfig}
+                    />
+                  </div>
+                </div>
+
+                <div className="lg:border-l lg:border-gray-200 lg:pl-10 dark:lg:border-gray-700">
+                  <div className="mb-6 flex items-center gap-2">
+                    <Globe className="h-5 w-5 text-emerald-600 dark:text-emerald-500" strokeWidth={1.5} />
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Network Settings</h3>
+                  </div>
+                  <div className="space-y-0">
+                    <InputField
+                      label="DNS Servers"
+                      value={config.dns}
+                      field="dns"
+                      placeholder="e.g., 1.1.1.1, 8.8.8.8"
+                      onChange={updateConfig}
+                    />
+                    <InputField
+                      label="MTU"
+                      value={config.mtu}
+                      field="mtu"
+                      type="number"
+                      placeholder="e.g., 1420"
+                      onChange={updateConfig}
+                    />
+                    <InputField
+                      label="Persistent Keepalive (seconds)"
+                      value={config.persistentKeepalive}
+                      field="persistentKeepalive"
+                      type="number"
+                      placeholder="e.g., 25"
+                      onChange={updateConfig}
+                    />
+                    <InputField
+                      label="Allowed IPs"
+                      value={config.allowedIps}
+                      field="allowedIps"
+                      placeholder="e.g., 0.0.0.0/0, ::/0"
+                      onChange={updateConfig}
+                    />
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Server Settings */}
-          <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="mb-6 text-base font-semibold text-gray-900 dark:text-gray-100">Server Settings</h3>
-            <div className="space-y-0">
-              <InputField
-                label="Server Host"
-                value={config.serverHost}
-                field="serverHost"
-                placeholder="e.g., vpn.example.com or 192.168.1.1"
-                onChange={updateConfig}
-              />
-              <InputField
-                label="Server Port"
-                value={config.serverPort}
-                field="serverPort"
-                type="number"
-                placeholder="e.g., 51820"
-                onChange={updateConfig}
-              />
-              <InputField
-                label="Server Address"
-                value={config.serverAddress}
-                field="serverAddress"
-                placeholder="e.g., 10.0.0.1/24"
-                onChange={updateConfig}
-              />
-              <InputField
-                label="Client Address Range"
-                value={config.clientAddressRange}
-                field="clientAddressRange"
-                placeholder="e.g., 10.0.0.0/24"
-                onChange={updateConfig}
-              />
             </div>
-          </div>
-
-          {/* Network Settings */}
-          <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="mb-6 text-base font-semibold text-gray-900 dark:text-gray-100">Network Settings</h3>
-            <div className="space-y-0">
-              <InputField
-                label="DNS Servers"
-                value={config.dns}
-                field="dns"
-                placeholder="e.g., 1.1.1.1, 8.8.8.8"
-                onChange={updateConfig}
-              />
-              <InputField
-                label="MTU"
-                value={config.mtu}
-                field="mtu"
-                type="number"
-                placeholder="e.g., 1420"
-                onChange={updateConfig}
-              />
-              <InputField
-                label="Persistent Keepalive (seconds)"
-                value={config.persistentKeepalive}
-                field="persistentKeepalive"
-                type="number"
-                placeholder="e.g., 25"
-                onChange={updateConfig}
-              />
-              <InputField
-                label="Allowed IPs"
-                value={config.allowedIps}
-                field="allowedIps"
-                placeholder="e.g., 0.0.0.0/0, ::/0"
-                onChange={updateConfig}
-              />
-            </div>
-          </div>
 
           {/* Advanced Settings */}
           <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="mb-6 text-base font-semibold text-gray-900 dark:text-gray-100">Advanced Settings</h3>
+            <div className="mb-6 flex items-center gap-3">
+              <SlidersHorizontal
+                className="h-5 w-5 text-emerald-600 dark:text-emerald-500"
+                strokeWidth={1.5}
+              />
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Advanced Settings</h3>
+            </div>
             <div className="space-y-0">
+              <TextAreaField
+                label="PreUp"
+                value={config.preUp || ''}
+                field="preUp"
+                placeholder="Commands to run before interface is brought up (optional)"
+                onChange={updateConfig}
+              />
               <TextAreaField
                 label="PostUp"
                 value={config.postUp || ''}
                 field="postUp"
                 placeholder="Commands to run after interface is up (optional)"
+                onChange={updateConfig}
+              />
+              <TextAreaField
+                label="PreDown"
+                value={config.preDown || ''}
+                field="preDown"
+                placeholder="Commands to run before interface is taken down (optional)"
                 onChange={updateConfig}
               />
               <TextAreaField

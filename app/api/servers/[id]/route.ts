@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { clearSetupStatusCache } from "@/lib/setup";
 import path from "path";
+import { writeWireGuardConfig } from "@/lib/wireguard/config-generator";
+import { applyWireGuardConfigToRunningInterface } from "@/lib/wireguard/sync-service";
 
 export async function PATCH(
   request: Request,
@@ -137,9 +139,27 @@ export async function PATCH(
     // Clear the setup status cache
     clearSetupStatusCache();
 
+    let wireGuardReloaded: boolean | null = null;
+    let wireGuardWriteOk: boolean | null = null;
+    if (id === "wireguard" && vpnConfig.wireGuard?.enabled) {
+      wireGuardWriteOk = await writeWireGuardConfig();
+      wireGuardReloaded = wireGuardWriteOk
+        ? await applyWireGuardConfigToRunningInterface("wg0")
+        : false;
+    }
+
     return NextResponse.json({
       success: true,
-      message: "Server updated successfully",
+      message:
+        wireGuardWriteOk === false
+          ? "Server updated, but writing wg0.conf failed. Check DATA_DIR and server logs."
+          : wireGuardReloaded === false
+            ? "Server updated and wg0.conf written, but applying live WireGuard failed. Check server logs."
+            : wireGuardReloaded === true
+              ? "Server updated, wg0.conf written, and WireGuard reloaded."
+              : "Server updated successfully",
+      wireGuardReloaded,
+      wireGuardWriteOk,
     });
   } catch (error) {
     console.error('Failed to update server:', error);

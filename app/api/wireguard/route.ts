@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import os from "os";
 import { prisma } from "@/lib/prisma";
 import { getPrimarySystemConfig } from "@/lib/setup";
 import path from "path";
 import { requireAuth } from "@/lib/api-auth";
 import { wgPubkeyFromPrivate } from "@/lib/wireguard/wg-pubkey";
+import { writeWireGuardConfig } from "@/lib/wireguard/config-generator";
+import {
+  applyWireGuardConfigToRunningInterface,
+  getWireGuardStatus,
+  getWireGuardTunnelUptimeSeconds,
+} from "@/lib/wireguard/sync-service";
 
 function normalizeWireGuardForApi(raw: unknown) {
   if (!raw || typeof raw !== "object") return null;
@@ -23,6 +30,8 @@ function normalizeWireGuardForApi(raw: unknown) {
     mtu: !isNaN(mtu) && mtu > 0 ? mtu : 1420,
     persistentKeepalive: !isNaN(ka) && ka >= 0 ? ka : 25,
     allowedIps: String(w.allowedIps ?? "0.0.0.0/0, ::/0"),
+    preUp: typeof w.preUp === "string" ? w.preUp : "",
+    preDown: typeof w.preDown === "string" ? w.preDown : "",
     postUp: typeof w.postUp === "string" ? w.postUp : "",
     postDown: typeof w.postDown === "string" ? w.postDown : "",
   };
@@ -105,9 +114,6 @@ export async function GET() {
     const serverResponse = serverWithCorrectPath
       ? { ...serverWithCorrectPath }
       : ({} as Record<string, unknown>);
-    if ("privateKey" in serverResponse) {
-      delete (serverResponse as { privateKey?: string }).privateKey;
-    }
 
     const config = normalizeWireGuardForApi(vpnConfig.wireGuard);
     if (!config) {
@@ -117,9 +123,27 @@ export async function GET() {
       );
     }
 
+    const wgLive = await getWireGuardStatus("wg0");
+    const live = wgLive
+      ? {
+          up: true,
+          interfaceName: wgLive.interface,
+          listenPort: wgLive.listenPort,
+        }
+      : { up: false as const };
+
+    const hostUptimeSeconds = Math.floor(os.uptime());
+    const tunnelUptimeSeconds =
+      wgLive != null
+        ? await getWireGuardTunnelUptimeSeconds(wgLive.interface)
+        : null;
+
     return NextResponse.json({
       config,
       server: serverResponse,
+      live,
+      hostUptimeSeconds,
+      tunnelUptimeSeconds,
     });
   } catch (error) {
     console.error("Failed to fetch WireGuard configuration:", error);
@@ -138,7 +162,16 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { config } = body;
+    const { config, serverPrivateKey } = body as {
+      config: {
+        serverHost?: unknown;
+        serverPort?: unknown;
+        mtu?: unknown;
+        persistentKeepalive?: unknown;
+        [key: string]: unknown;
+      };
+      serverPrivateKey?: string;
+    };
 
     const systemConfig = await getPrimarySystemConfig();
 
@@ -184,6 +217,37 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    if (typeof serverPrivateKey === "string") {
+      const trimmed = serverPrivateKey.trim();
+      if (!trimmed) {
+        return NextResponse.json(
+          { error: "Server private key cannot be empty." },
+          { status: 400 },
+        );
+      }
+      const current = await prisma.vPNServer.findUnique({
+        where: { id: "wireguard" },
+        select: { privateKey: true },
+      });
+      if (trimmed !== (current?.privateKey ?? "")) {
+        try {
+          const publicKey = await wgPubkeyFromPrivate(trimmed);
+          await prisma.vPNServer.update({
+            where: { id: "wireguard" },
+            data: { privateKey: trimmed, publicKey },
+          });
+        } catch {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid WireGuard private key. It must be a valid key for wg/wg-quick.",
+            },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
     await prisma.vPNServer.update({
       where: { id: "wireguard" },
       data: {
@@ -192,9 +256,28 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    const wgEnabled = updatedVpnConfig.wireGuard?.enabled !== false;
+    let wireGuardReloaded: boolean | null = null;
+    let wireGuardWriteOk: boolean | null = null;
+    if (wgEnabled) {
+      wireGuardWriteOk = await writeWireGuardConfig();
+      wireGuardReloaded = wireGuardWriteOk
+        ? await applyWireGuardConfigToRunningInterface("wg0")
+        : false;
+    }
+
     return NextResponse.json({
       success: true,
-      message: "Configuration updated successfully",
+      message:
+        wireGuardWriteOk === false
+          ? "Configuration saved, but updating wg0.conf on disk failed. Check DATA_DIR and server logs."
+          : wireGuardReloaded === false
+            ? "Configuration saved and wg0.conf updated, but applying live WireGuard settings failed. Check server logs."
+            : wireGuardReloaded === true
+              ? "Configuration updated, wg0.conf written, and WireGuard reloaded."
+              : "Configuration updated successfully.",
+      wireGuardReloaded,
+      wireGuardWriteOk,
     });
   } catch (error) {
     console.error("Failed to update WireGuard configuration:", error);

@@ -34,7 +34,7 @@ async function fetchSetupComplete(request: NextRequest): Promise<boolean> {
  * `useSecureCookies ?? url.protocol === "https:"`). Using NODE_ENV here
  * breaks logins when NODE_ENV=production but the app is served over HTTP
  * (common with Docker / internal networks): the browser gets
- * `authjs.session-token` while middleware looked for `__Secure-authjs.session-token`.
+ * `authjs.session-token` while proxy looked for `__Secure-authjs.session-token`.
  */
 function useSecureCookie(request: NextRequest): boolean {
   const forwarded = request.headers.get("x-forwarded-proto");
@@ -52,7 +52,7 @@ function getSessionToken(request: NextRequest) {
   });
 }
 
-export default async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (

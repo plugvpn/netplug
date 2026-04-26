@@ -42,7 +42,8 @@ export interface LogEntry {
 }
 
 class LogCaptureService {
-  private logFilePath: string;
+  /** Resolved on first use so `next build` / file tracing does not treat a missing runtime log as a bundle input. */
+  private logFilePath: string | null = null;
   private logStream: WriteStream | null = null;
   private originalStdoutWrite: typeof process.stdout.write;
   private originalStderrWrite: typeof process.stderr.write;
@@ -53,8 +54,13 @@ class LogCaptureService {
     // Store original stream write methods
     this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     this.originalStderrWrite = process.stderr.write.bind(process.stderr);
+  }
 
-    this.logFilePath = resolveLogFilePath();
+  private resolveLogFilePathCached(): string {
+    if (this.logFilePath === null) {
+      this.logFilePath = resolveLogFilePath();
+    }
+    return this.logFilePath;
   }
 
   /**
@@ -66,7 +72,8 @@ class LogCaptureService {
     }
 
     // Create/open log file stream (append mode)
-    this.logStream = createWriteStream(this.logFilePath, { flags: 'a' });
+    const logPath = this.resolveLogFilePathCached();
+    this.logStream = createWriteStream(logPath, { flags: 'a' });
 
     // Intercept process.stdout.write
     process.stdout.write = ((write) => {
@@ -97,7 +104,7 @@ class LogCaptureService {
     })(this.originalStderrWrite) as typeof process.stderr.write;
 
     this.isInitialized = true;
-    console.log(`[LogCapture] Log capture service initialized - writing to ${this.logFilePath}`);
+    console.log(`[LogCapture] Log capture service initialized - writing to ${logPath}`);
 
     // Check and rotate log file if too large
     this.checkAndRotateLog();
@@ -138,12 +145,13 @@ class LogCaptureService {
    */
   private checkAndRotateLog() {
     try {
-      if (fs.existsSync(this.logFilePath)) {
-        const stats = fs.statSync(this.logFilePath);
+      const logPath = this.resolveLogFilePathCached();
+      if (fs.existsSync(logPath)) {
+        const stats = fs.statSync(logPath);
 
         // If log file is too large, rotate it
         if (stats.size > this.maxLogSizeBytes) {
-          const backupPath = `${this.logFilePath}.old`;
+          const backupPath = `${logPath}.old`;
 
           // Close current stream
           if (this.logStream) {
@@ -151,10 +159,10 @@ class LogCaptureService {
           }
 
           // Rename current log to .old (overwriting any existing .old file)
-          fs.renameSync(this.logFilePath, backupPath);
+          fs.renameSync(logPath, backupPath);
 
           // Create new log stream
-          this.logStream = createWriteStream(this.logFilePath, { flags: 'a' });
+          this.logStream = createWriteStream(logPath, { flags: 'a' });
 
           console.log(`[LogCapture] Log file rotated - old log saved to ${backupPath}`);
         }
@@ -175,11 +183,12 @@ class LogCaptureService {
   }): LogEntry[] {
     try {
       // Read log file
-      if (!fs.existsSync(this.logFilePath)) {
+      const logPath = this.resolveLogFilePathCached();
+      if (!fs.existsSync(logPath)) {
         return [];
       }
 
-      const content = fs.readFileSync(this.logFilePath, 'utf-8');
+      const content = fs.readFileSync(logPath, 'utf-8');
       const lines = content.split('\n').filter(line => line.trim() !== '');
 
       // Parse log lines
@@ -245,11 +254,12 @@ class LogCaptureService {
         this.logStream.end();
       }
 
+      const logPath = this.resolveLogFilePathCached();
       // Truncate the log file
-      fs.writeFileSync(this.logFilePath, '');
+      fs.writeFileSync(logPath, '');
 
       // Reopen stream
-      this.logStream = createWriteStream(this.logFilePath, { flags: 'a' });
+      this.logStream = createWriteStream(logPath, { flags: 'a' });
 
       console.log('[LogCapture] Logs cleared');
     } catch (error) {
@@ -293,7 +303,7 @@ class LogCaptureService {
    * Get log file path
    */
   getLogFilePath(): string {
-    return this.logFilePath;
+    return this.resolveLogFilePathCached();
   }
 
   /**
@@ -325,8 +335,9 @@ class LogCaptureService {
       this.restore();
 
       // Remove log file
-      if (fs.existsSync(this.logFilePath)) {
-        fs.unlinkSync(this.logFilePath);
+      const logPath = this.resolveLogFilePathCached();
+      if (fs.existsSync(logPath)) {
+        fs.unlinkSync(logPath);
         this.originalStdoutWrite.call(
           process.stdout,
           '[LogCapture] Log file removed\n'
@@ -334,7 +345,7 @@ class LogCaptureService {
       }
 
       // Also remove .old backup if it exists
-      const backupPath = `${this.logFilePath}.old`;
+      const backupPath = `${logPath}.old`;
       if (fs.existsSync(backupPath)) {
         fs.unlinkSync(backupPath);
       }

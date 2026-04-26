@@ -9,7 +9,6 @@ import {
   Server,
   Users,
   LogOut,
-  Shield,
   FileText,
   Link2,
   ChevronLeft,
@@ -32,7 +31,6 @@ const navigation: NavigationItem[] = [
   { name: "Activity", href: "/dashboard/activity", icon: FileText },
   { name: "Users", href: "/dashboard/users", icon: Users },
   { name: "Wireguard", href: "/dashboard/wireguard", icon: Server },
-  { name: "Obfuscation", href: "/dashboard/obfuscation", icon: Shield },
 ];
 
 export function Sidebar() {

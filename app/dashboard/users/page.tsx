@@ -6,6 +6,7 @@ import { formatBytes } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { User, Activity, X, Edit3, Trash2, Plus, Server, QrCode, Copy, Check, Eye, EyeOff, RefreshCw, Key, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { ToastProvider, useToast } from "@/components/ToastProvider";
+import { PeerIconGlyph, PeerIconPicker } from "@/components/peer-icon-picker";
 import { QRCodeSVG } from "qrcode.react";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { splitAllowedIps, peerIpFromAllowedIps, normalizeIpList } from '@/lib/allowed-ips';
@@ -42,6 +43,7 @@ interface VPNUser {
   isConnected: boolean;
   isEnabled: boolean;
   serverId: string;
+  peerIcon: string | null;
   createdAt: Date;
   updatedAt: Date;
   server: VPNServer;
@@ -296,6 +298,7 @@ function UsersPageContent() {
       privateKey: '',
       publicKey: '',
       presharedKey: null,
+      peerIcon: null,
       remainingDays: null,
       remainingTrafficBytes: null,
       isEnabled: true,
@@ -464,9 +467,19 @@ function UsersPageContent() {
       return;
     }
 
+    const selectedServer = servers.find((s) => s.id === editingUser.serverId);
+    if (
+      editingUser.id &&
+      selectedServer?.protocol === 'wireguard' &&
+      editingUser.privateKey?.trim() &&
+      !editingUser.publicKey?.trim()
+    ) {
+      showToast('Invalid private key: public key could not be derived', 'error');
+      return;
+    }
+
     try {
       const allowedIps = buildAllowedIps(editingUser.peerIp, editingUser.routingAllowedIps);
-      const selectedServer = servers.find((s) => s.id === editingUser.serverId);
       if (selectedServer?.protocol === "wireguard" && !allowedIps) {
         showToast("VPN tunnel IP is required for WireGuard users", "error");
         return;
@@ -479,6 +492,7 @@ function UsersPageContent() {
         privateKey: editingUser.privateKey || null,
         publicKey: editingUser.publicKey || null,
         presharedKey: editingUser.presharedKey || null,
+        peerIcon: editingUser.peerIcon ?? null,
         remainingDays: editingUser.remainingDays,
         // Convert MB to bytes for storage (user enters MB, we store bytes)
         remainingTrafficBytes: editingUser.remainingTrafficBytes !== null && editingUser.remainingTrafficBytes !== undefined
@@ -661,6 +675,12 @@ function UsersPageContent() {
           return 0;
       }
     });
+
+  const isPrivateKeyLocked = Boolean(
+    editingUser?.id &&
+      editingUser.privateKey &&
+      editingUser.privateKey.trim().length > 0,
+  );
 
   if (loading) {
     return (
@@ -889,7 +909,10 @@ function UsersPageContent() {
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-3">
                                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 dark:bg-gray-800">
-                                  <User className="h-5 w-5 text-gray-300 dark:text-gray-400" />
+                                  <PeerIconGlyph
+                                    iconId={user.peerIcon}
+                                    className="h-5 w-5 text-gray-300 dark:text-gray-400"
+                                  />
                                 </div>
                                 <div>
                                   <p className="font-medium text-gray-100 dark:text-gray-100">{user.username}</p>
@@ -1023,36 +1046,59 @@ function UsersPageContent() {
               </button>
             </div>
 
+            <form
+              className="flex flex-col"
+              autoComplete="off"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleSaveUser();
+              }}
+            >
+              {/* Absorb browser password autofill so it does not target WireGuard key fields */}
+              <div className="sr-only" aria-hidden="true">
+                <input type="text" readOnly tabIndex={-1} autoComplete="username" />
+                <input type="password" readOnly tabIndex={-1} autoComplete="current-password" />
+              </div>
+
             {/* Modal Content */}
             <div className="max-h-[60vh] space-y-5 overflow-y-auto p-6">
-              {/* Username */}
+              {/* Username + peer icon */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Username *
                 </label>
-                <input
-                  type="text"
-                  value={editingUser.username || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
-                  placeholder="john_doe"
-                  disabled={!!editingUser.id}
-                />
-                {editingUser.id && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Username cannot be changed after creation</p>
-                )}
+                <div className="flex items-stretch gap-2">
+                  <PeerIconPicker
+                    value={editingUser.peerIcon}
+                    onChange={(iconId) =>
+                      setEditingUser({ ...editingUser, peerIcon: iconId })
+                    }
+                  />
+                  <input
+                    type="text"
+                    value={editingUser.username || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })}
+                    className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+                    placeholder="john_doe"
+                    autoComplete="off"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Must be unique. Changing username updates this peer everywhere in the dashboard and in{' '}
+                  <span className="font-mono">wg0.conf</span> comments when you save.
+                </p>
               </div>
 
               {/* Private Key */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Private Key *
+                    Private Key{!editingUser.id ? ' *' : ''}
                   </label>
                   <button
                     type="button"
                     onClick={handleGenerateKeys}
-                    disabled={generatingKeys || !!editingUser.id}
+                    disabled={generatingKeys || isPrivateKeyLocked}
                     className="flex items-center gap-1.5 rounded-md border border-emerald-600 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
                   >
                     {generatingKeys ? (
@@ -1073,9 +1119,17 @@ function UsersPageContent() {
                     type={showPrivateKey ? 'text' : 'password'}
                     value={editingUser.privateKey || ''}
                     onChange={(e) => handlePrivateKeyChange(e.target.value)}
-                    disabled={!!editingUser.id}
+                    disabled={isPrivateKeyLocked}
                     className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-10 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:disabled:bg-gray-900"
                     placeholder="Enter or generate private key"
+                    name="vpn-wireguard-client-private-key"
+                    id={`vpn-wg-private-${editingUser.id ?? 'new'}`}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-bwignore
                   />
                   <button
                     type="button"
@@ -1090,9 +1144,11 @@ function UsersPageContent() {
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {editingUser.id
-                    ? 'Private key cannot be changed after creation'
-                    : 'WireGuard private key (auto-generated or manually entered)'}
+                  {isPrivateKeyLocked
+                    ? 'Private key cannot be changed after it has been set.'
+                    : editingUser.id
+                      ? 'This user has no private key yet (e.g. imported peer). Enter or generate one; it must match the public key below.'
+                      : 'WireGuard private key (auto-generated or manually entered)'}
                 </p>
               </div>
 
@@ -1147,6 +1203,13 @@ function UsersPageContent() {
                     disabled={!!editingUser.id}
                     className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-10 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:disabled:bg-gray-900"
                     placeholder="Optional: enhanced security with PSK"
+                    name="vpn-wireguard-preshared-key"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-bwignore
                   />
                   {editingUser.presharedKey && (
                     <button
@@ -1279,6 +1342,7 @@ function UsersPageContent() {
             {/* Modal Footer */}
             <div className="flex gap-3 border-t border-gray-200 p-6 dark:border-gray-700">
               <button
+                type="button"
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingUser(null);
@@ -1288,12 +1352,13 @@ function UsersPageContent() {
                 Cancel
               </button>
               <button
-                onClick={handleSaveUser}
+                type="submit"
                 className="flex-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600"
               >
                 {editingUser.id ? 'Save Changes' : 'Create User'}
               </button>
             </div>
+            </form>
           </div>
         </div>
       )}
@@ -1367,7 +1432,10 @@ function UsersPageContent() {
                     {/* User Info */}
                     <div className="mb-6 w-full rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
                       <div className="mb-2 flex items-center gap-2">
-                        <User className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                        <PeerIconGlyph
+                          iconId={qrCodeUser.peerIcon}
+                          className="h-4 w-4 text-gray-500 dark:text-gray-400"
+                        />
                         <span className="font-medium text-gray-900 dark:text-gray-100">{qrCodeUser.username}</span>
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">

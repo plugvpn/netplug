@@ -27,16 +27,13 @@ export async function GET() {
 
     // Format the data for the frontend
     // Show only current session usage (not all-time)
-    const formattedConnections = activeConnections.map(user => {
-      // Type assertion for fields that exist in DB but may not be in generated types yet
-      const userData = user as any;
-
+    const formattedConnections = activeConnections.map((user) => {
       return {
         id: user.id,
         username: user.username,
         ipAddress: user.allowedIps || 'N/A',
-        endpoint: userData.endpoint || null,
-        lastHandshake: userData.lastHandshake?.toISOString() || null,
+        endpoint: user.endpoint || null,
+        lastHandshake: user.lastHandshake?.toISOString() || null,
         bytesReceived: user.bytesReceived.toString(),
         bytesSent: user.bytesSent.toString(),
         serverName: user.server.name,

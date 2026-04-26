@@ -1,5 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs/promises';
+import os from 'os';
 import { prisma } from '@/lib/prisma';
 import { writeWireGuardConfig } from './config-generator';
 import path from 'path';
@@ -75,31 +77,52 @@ interface WireGuardPeerStatus {
 }
 
 interface WireGuardStatus {
+  /** OS interface name (e.g. wg0, utun8) — not part of `wg show … dump` line 1 */
   interface: string;
   publicKey: string;
   privateKey: string;
   listenPort: number;
+  fwmark?: number;
   peers: WireGuardPeerStatus[];
 }
 
 /**
- * Parse WireGuard dump output
- * Format: interface, public-key, private-key, listen-port, fwmark
+ * Parse WireGuard dump output (see `man wg`: first line is
+ * private-key, public-key, listen-port, fwmark).
  * Peer format: public-key, preshared-key, endpoint, allowed-ips, latest-handshake, transfer-rx, transfer-tx, persistent-keepalive
  */
-function parseWireGuardDump(output: string): WireGuardStatus | null {
+function parseWireGuardDump(
+  output: string,
+  interfaceName: string,
+): WireGuardStatus | null {
   try {
     const lines = output.trim().split('\n');
     if (lines.length === 0) return null;
 
     const [interfaceLine, ...peerLines] = lines;
-    const [iface, publicKey, privateKey, listenPort] = interfaceLine.split('\t');
+    const parts = interfaceLine.split('\t');
+    if (parts.length < 3) {
+      console.error('[WireGuard] Unexpected dump first line (expected ≥3 tab-separated fields)');
+      return null;
+    }
+    const [privateKey, publicKey, listenPortRaw, fwmarkRaw] = parts;
+
+    let fwmark: number | undefined;
+    if (fwmarkRaw && fwmarkRaw !== '(none)' && fwmarkRaw !== 'off') {
+      const n = fwmarkRaw.startsWith('0x') || fwmarkRaw.startsWith('0X')
+        ? parseInt(fwmarkRaw, 16)
+        : parseInt(fwmarkRaw, 10);
+      if (!isNaN(n)) fwmark = n;
+    }
+
+    const listenPort = parseInt(listenPortRaw, 10);
 
     const status: WireGuardStatus = {
-      interface: iface,
+      interface: interfaceName,
       publicKey,
       privateKey,
-      listenPort: parseInt(listenPort, 10),
+      listenPort: !isNaN(listenPort) ? listenPort : 0,
+      ...(fwmark !== undefined ? { fwmark } : {}),
       peers: [],
     };
 
@@ -150,7 +173,7 @@ export async function getWireGuardStatus(interfaceName = 'wg0'): Promise<WireGua
     }
 
     const { stdout } = await execAsync(`wg show ${actualInterface} dump`);
-    return parseWireGuardDump(stdout);
+    return parseWireGuardDump(stdout, actualInterface);
   } catch (error: any) {
     if (error.code === 'ENOENT') {
       console.error('[WireGuard] WireGuard tools not installed or not in PATH');
@@ -164,6 +187,33 @@ export async function getWireGuardStatus(interfaceName = 'wg0'): Promise<WireGua
         console.error(`[WireGuard] Error details:`, error.stderr);
       }
     }
+    return null;
+  }
+}
+
+/**
+ * Best-effort age of the tunnel interface (Linux sysfs). Returns null on other
+ * platforms or if the timestamp cannot be read reliably.
+ */
+export async function getWireGuardTunnelUptimeSeconds(
+  interfaceName: string,
+): Promise<number | null> {
+  if (process.platform !== 'linux') {
+    return null;
+  }
+  const hostUptimeSec = Math.floor(os.uptime());
+  try {
+    const st = await fs.stat(path.join('/sys/class/net', interfaceName));
+    const ms = st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return null;
+    }
+    const sec = Math.floor((Date.now() - ms) / 1000);
+    if (sec < 0 || sec > hostUptimeSec + 60) {
+      return null;
+    }
+    return sec;
+  } catch {
     return null;
   }
 }
@@ -595,24 +645,15 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
 }
 
 /**
- * Reload WireGuard configuration
- * Regenerates config file and applies it to the interface without disconnecting clients
+ * Apply an already-written wg0.conf to the running interface (live sync or wg-quick up).
+ * Call {@link writeWireGuardConfig} first so on-disk config matches the database.
  */
-export async function reloadWireGuardConfig(interfaceName = 'wg0'): Promise<boolean> {
+export async function applyWireGuardConfigToRunningInterface(
+  interfaceName = 'wg0',
+): Promise<boolean> {
   try {
-    console.log('Reloading WireGuard configuration...');
-
-    // Generate and write new config
-    const success = await writeWireGuardConfig();
-    if (!success) {
-      console.error('Failed to write WireGuard configuration');
-      return false;
-    }
-
-    // Check if interface exists (might be utunX on macOS)
     const actualInterface = await getActualInterfaceName(interfaceName);
     if (actualInterface) {
-      // Interface exists, use live sync to avoid disconnecting clients
       console.log(`Found existing interface: ${actualInterface}`);
       const synced = await syncWireGuardConfigLive(interfaceName);
       if (!synced) {
@@ -620,13 +661,39 @@ export async function reloadWireGuardConfig(interfaceName = 'wg0'): Promise<bool
         return false;
       }
     } else {
-      // Interface doesn't exist, bring it up fresh
       console.log(`No existing interface found, bringing up ${interfaceName}`);
       const brought = await bringUpWireGuard(interfaceName);
       if (!brought) {
         console.error('Failed to bring up WireGuard interface');
         return false;
       }
+    }
+
+    console.log('WireGuard configuration applied to interface successfully');
+    return true;
+  } catch (error) {
+    console.error('Failed to apply WireGuard configuration to interface:', error);
+    return false;
+  }
+}
+
+/**
+ * Reload WireGuard configuration
+ * Regenerates config file and applies it to the interface without disconnecting clients
+ */
+export async function reloadWireGuardConfig(interfaceName = 'wg0'): Promise<boolean> {
+  try {
+    console.log('Reloading WireGuard configuration...');
+
+    const success = await writeWireGuardConfig();
+    if (!success) {
+      console.error('Failed to write WireGuard configuration');
+      return false;
+    }
+
+    const applied = await applyWireGuardConfigToRunningInterface(interfaceName);
+    if (!applied) {
+      return false;
     }
 
     console.log('WireGuard configuration reloaded successfully');

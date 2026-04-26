@@ -100,7 +100,7 @@ export async function GET() {
     }
 
     // Merge database records with detailed config
-    const servers = dbServers.map(server => {
+    const servers = dbServers.map((server) => {
       const config = server.protocol === 'openvpn'
         ? vpnConfig?.openVpn
         : vpnConfig?.wireGuard;

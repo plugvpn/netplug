@@ -44,6 +44,114 @@ function trimTrailingPeerIntroComments(interfacePart: string): string {
   return lines.slice(0, end).join('\n').replace(/\s+$/, '')
 }
 
+function stripCommentForKeyLine(line: string): string {
+  const hash = line.indexOf('#')
+  if (hash === -1) return line.trimEnd()
+  return line.slice(0, hash).trim()
+}
+
+function lineKey(line: string): string | null {
+  const s = stripCommentForKeyLine(line)
+  if (!s) return null
+  const eq = s.indexOf('=')
+  if (eq === -1) return null
+  return s.slice(0, eq).trim().toLowerCase()
+}
+
+/**
+ * Apply dashboard WireGuard settings to the [Interface] section while preserving
+ * PrivateKey and any other keys (FwMark, PreUp, comments, etc.).
+ */
+export function applyDashboardToUploadedInterfacePart(
+  interfacePart: string,
+  wg: {
+    serverAddress: string
+    clientAddressRange: string
+    serverPort: number
+    mtu: number
+    preUp?: string
+    preDown?: string
+    postUp?: string
+    postDown?: string
+  },
+): string {
+  let serverAddress = String(wg.serverAddress ?? '').trim()
+  if (serverAddress && !serverAddress.includes('/')) {
+    const cr = String(wg.clientAddressRange ?? '')
+    const cidr = cr.includes('/') ? cr.substring(cr.indexOf('/')) : '/24'
+    serverAddress = `${serverAddress}${cidr}`
+  }
+
+  const lines = interfacePart.split(/\r?\n/)
+  const ifaceHeaderIdx = lines.findIndex((l) => /^\s*\[Interface\]\s*$/i.test(l.trim()))
+  if (ifaceHeaderIdx === -1) {
+    return interfacePart
+  }
+
+  let ifaceEnd = lines.length
+  for (let j = ifaceHeaderIdx + 1; j < lines.length; j++) {
+    if (/^\s*\[[^\]]+\]\s*$/.test(lines[j].trim())) {
+      ifaceEnd = j
+      break
+    }
+  }
+
+  const before = lines.slice(0, ifaceHeaderIdx)
+  const ifaceHeader = lines[ifaceHeaderIdx]
+  const inner = lines.slice(ifaceHeaderIdx + 1, ifaceEnd)
+  const after = lines.slice(ifaceEnd)
+
+  const desired: Record<string, string> = {}
+  if (serverAddress) {
+    desired.address = `Address = ${serverAddress}`
+  }
+  desired.listenport = `ListenPort = ${wg.serverPort}`
+  desired.mtu = `MTU = ${wg.mtu}`
+  const preUp = typeof wg.preUp === 'string' ? wg.preUp.trim() : ''
+  const preDown = typeof wg.preDown === 'string' ? wg.preDown.trim() : ''
+  const postUp = typeof wg.postUp === 'string' ? wg.postUp.trim() : ''
+  const postDown = typeof wg.postDown === 'string' ? wg.postDown.trim() : ''
+  if (preUp) {
+    desired.preup = `PreUp = ${preUp}`
+  }
+  if (postUp) {
+    desired.postup = `PostUp = ${postUp}`
+  }
+  if (preDown) {
+    desired.predown = `PreDown = ${preDown}`
+  }
+  if (postDown) {
+    desired.postdown = `PostDown = ${postDown}`
+  }
+
+  const seen = new Set<string>()
+  const newInner: string[] = []
+  for (const line of inner) {
+    const k = lineKey(line)
+    if (k && Object.prototype.hasOwnProperty.call(desired, k)) {
+      newInner.push(desired[k]!)
+      seen.add(k)
+    } else if (k === 'preup' && !Object.prototype.hasOwnProperty.call(desired, 'preup')) {
+      // cleared in dashboard
+    } else if (k === 'predown' && !Object.prototype.hasOwnProperty.call(desired, 'predown')) {
+      // cleared in dashboard
+    } else if (k === 'postup' && !Object.prototype.hasOwnProperty.call(desired, 'postup')) {
+      // cleared in dashboard
+    } else if (k === 'postdown' && !Object.prototype.hasOwnProperty.call(desired, 'postdown')) {
+      // cleared in dashboard
+    } else {
+      newInner.push(line)
+    }
+  }
+  for (const k of Object.keys(desired)) {
+    if (!seen.has(k)) {
+      newInner.push(desired[k]!)
+    }
+  }
+
+  return [...before, ifaceHeader, ...newInner, ...after].join('\n')
+}
+
 function buildPeersBlock(
   users: Array<{
     username: string
@@ -87,7 +195,17 @@ export async function syncUploadedWgConfPeersFromDatabase(): Promise<boolean> {
 
   const systemConfig = await getPrimarySystemConfig()
   const wg = (systemConfig?.vpnConfiguration as Record<string, unknown> | null)?.wireGuard as
-    | { persistentKeepalive?: number }
+    | {
+        persistentKeepalive?: number
+        serverAddress?: string
+        clientAddressRange?: string
+        serverPort?: number
+        mtu?: number
+        preUp?: string
+        preDown?: string
+        postUp?: string
+        postDown?: string
+      }
     | undefined
   const persistentKeepalive =
     typeof wg?.persistentKeepalive === 'number' && !isNaN(wg.persistentKeepalive)
@@ -110,7 +228,24 @@ export async function syncUploadedWgConfPeersFromDatabase(): Promise<boolean> {
     return false
   }
 
-  const { interfacePart } = splitInterfaceAndPeers(raw)
+  let { interfacePart } = splitInterfaceAndPeers(raw)
+  if (wg) {
+    const serverPort =
+      typeof wg.serverPort === 'number' && !isNaN(wg.serverPort) && wg.serverPort >= 1 && wg.serverPort <= 65535
+        ? wg.serverPort
+        : 51820
+    const mtu = typeof wg.mtu === 'number' && !isNaN(wg.mtu) && wg.mtu > 0 ? wg.mtu : 1420
+    interfacePart = applyDashboardToUploadedInterfacePart(interfacePart, {
+      serverAddress: String(wg.serverAddress ?? ''),
+      clientAddressRange: String(wg.clientAddressRange ?? ''),
+      serverPort,
+      mtu,
+      preUp: typeof wg.preUp === 'string' ? wg.preUp : undefined,
+      preDown: typeof wg.preDown === 'string' ? wg.preDown : undefined,
+      postUp: typeof wg.postUp === 'string' ? wg.postUp : undefined,
+      postDown: typeof wg.postDown === 'string' ? wg.postDown : undefined,
+    })
+  }
 
   const users = await prisma.vPNUser.findMany({
     where: {

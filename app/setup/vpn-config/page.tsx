@@ -30,7 +30,9 @@ export default function VPNConfigPage() {
     persistentKeepalive: '25',
     allowedIps: '0.0.0.0/0, ::/0',
 
-    // Advanced
+    // Advanced (wg-quick)
+    preUp: '',
+    preDown: '',
     postUp: 'iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth+ -j MASQUERADE',
     postDown: 'iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth+ -j MASQUERADE',
   })
@@ -705,11 +707,26 @@ export default function VPNConfigPage() {
 
               {/* Advanced Settings */}
               <div className="space-y-4">
-                <h4 className="text-sm font-semibold text-emerald-400">Advanced (iptables)</h4>
+                <h4 className="text-sm font-semibold text-emerald-400">Advanced (wg-quick hooks)</h4>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
-                    PostUp Script
+                    PreUp
+                  </label>
+                  <textarea
+                    value={wireGuardConfig.preUp}
+                    onChange={(e) => setWireGuardConfig({ ...wireGuardConfig, preUp: e.target.value })}
+                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-mono text-xs"
+                    rows={2}
+                    placeholder="Optional: run before the interface is created"
+                    disabled={loading}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Runs before the interface is brought up</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    PostUp
                   </label>
                   <textarea
                     value={wireGuardConfig.postUp}
@@ -719,12 +736,27 @@ export default function VPNConfigPage() {
                     placeholder="iptables -A FORWARD -i %i -j ACCEPT"
                     disabled={loading}
                   />
-                  <p className="mt-1 text-xs text-slate-500">Commands to run when interface comes up</p>
+                  <p className="mt-1 text-xs text-slate-500">Runs after the interface is up</p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
-                    PostDown Script
+                    PreDown
+                  </label>
+                  <textarea
+                    value={wireGuardConfig.preDown}
+                    onChange={(e) => setWireGuardConfig({ ...wireGuardConfig, preDown: e.target.value })}
+                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-mono text-xs"
+                    rows={2}
+                    placeholder="Optional: run before the interface is removed"
+                    disabled={loading}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Runs before the interface is taken down</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    PostDown
                   </label>
                   <textarea
                     value={wireGuardConfig.postDown}
@@ -734,7 +766,7 @@ export default function VPNConfigPage() {
                     placeholder="iptables -D FORWARD -i %i -j ACCEPT"
                     disabled={loading}
                   />
-                  <p className="mt-1 text-xs text-slate-500">Commands to run when interface goes down</p>
+                  <p className="mt-1 text-xs text-slate-500">Runs after the interface is down</p>
                 </div>
               </div>
             </div>

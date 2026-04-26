@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Ensures the VPN setup UI never renders for anonymous or non-admin users
- * (middleware also enforces this; this blocks RSC/streaming the page shell).
+ * (root proxy also enforces this; this blocks RSC/streaming the page shell).
  */
 export default async function VpnConfigSetupLayout({
   children,
