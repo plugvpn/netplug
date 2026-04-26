@@ -2,6 +2,12 @@ import { prisma } from "@/lib/prisma";
 import fs from "fs/promises";
 import path from "path";
 
+export async function isWireGuardConfigUploaded(): Promise<boolean> {
+  const systemConfig = await prisma.systemConfig.findFirst();
+  const wg = (systemConfig?.vpnConfiguration as any)?.wireGuard;
+  return wg?.configSource === "uploaded";
+}
+
 interface WireGuardConfig {
   enabled: boolean;
   serverHost: string;
@@ -24,6 +30,20 @@ export async function generateWireGuardConfig(): Promise<string | null> {
     // Get WireGuard configuration from SystemConfig
     const systemConfig = await prisma.systemConfig.findFirst();
     const vpnConfig = systemConfig?.vpnConfiguration as any;
+
+    if (vpnConfig?.wireGuard?.configSource === "uploaded") {
+      const dataDir = process.env.DATA_DIR;
+      if (!dataDir) return null;
+      const configPath = path.join(dataDir, "wg0.conf");
+      try {
+        return await fs.readFile(configPath, "utf-8");
+      } catch {
+        console.warn(
+          "[WireGuard] Uploaded config mode but wg0.conf is missing on disk"
+        );
+        return null;
+      }
+    }
 
     if (!vpnConfig?.wireGuard) {
       console.warn('WireGuard configuration not found in database');
@@ -139,22 +159,36 @@ ListenPort = ${wgConfig.serverPort}
  */
 export async function writeWireGuardConfig(): Promise<boolean> {
   try {
-    const config = await generateWireGuardConfig();
-    if (!config) {
-      console.error('Failed to generate WireGuard configuration');
-      return false;
-    }
-
     const dataDir = process.env.DATA_DIR;
     if (!dataDir) {
       console.error('DATA_DIR environment variable is not set');
       return false;
     }
 
-    // Ensure DATA_DIR exists
     await fs.mkdir(dataDir, { recursive: true });
 
     const configPath = path.join(dataDir, 'wg0.conf');
+
+    if (await isWireGuardConfigUploaded()) {
+      try {
+        await fs.access(configPath);
+        console.log(
+          `[WireGuard] Preserving uploaded wg0.conf (not regenerating): ${configPath}`
+        );
+        return true;
+      } catch {
+        console.error(
+          '[WireGuard] Uploaded config mode but wg0.conf is missing; cannot reload'
+        );
+        return false;
+      }
+    }
+
+    const config = await generateWireGuardConfig();
+    if (!config) {
+      console.error('Failed to generate WireGuard configuration');
+      return false;
+    }
 
     // Write configuration file
     await fs.writeFile(configPath, config, 'utf-8');

@@ -1,16 +1,17 @@
-version: '3.8'
-
 services:
   dashboard:
     build: .
     container_name: netplug-dashboard
     ports:
       - "3000:3000/tcp"
-      - "443:443/udp"
+      - "51820:51820/udp"
     environment:
-      - NODE_ENV=production
+      NODE_ENV: "production"
+      DATABASE_URL: "file:/data/prod.db"
+      DATA_DIR: /data
+      AUTH_SECRET: "supersecretkey"
+      AUTH_URL: "http://localhost:3000"
     volumes:
-      - $PWD/:/app
       - $PWD/sandbox:/data
     restart: unless-stopped
     networks:
