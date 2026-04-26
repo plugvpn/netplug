@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getPrimarySystemConfig } from "@/lib/setup";
+import { syncUploadedWgConfPeersFromDatabase } from "@/lib/wireguard/uploaded-conf-sync";
 import fs from "fs/promises";
 import path from "path";
 
@@ -173,16 +174,18 @@ export async function writeWireGuardConfig(): Promise<boolean> {
     if (await isWireGuardConfigUploaded()) {
       try {
         await fs.access(configPath);
-        console.log(
-          `[WireGuard] Preserving uploaded wg0.conf (not regenerating): ${configPath}`
-        );
-        return true;
       } catch {
         console.error(
           '[WireGuard] Uploaded config mode but wg0.conf is missing; cannot reload'
         );
         return false;
       }
+      const synced = await syncUploadedWgConfPeersFromDatabase();
+      if (!synced) {
+        console.error('[WireGuard] Failed to merge DB peers into uploaded wg0.conf');
+        return false;
+      }
+      return true;
     }
 
     const config = await generateWireGuardConfig();

@@ -340,7 +340,16 @@ export default function VPNConfigPage() {
               <code className="text-emerald-300/90">wg0.conf</code> and brought up with{' '}
               <code className="text-emerald-300/90">wg-quick</code>. The dashboard will keep this file
               as-is on reload; add or change peers in the file on disk if you manage WireGuard outside
-              the wizard.
+              the wizard. Each <code className="text-emerald-300/90">[Peer]</code> becomes a VPN user. Peers may mix
+              some with <code className="text-emerald-300/90"># User: myname</code> immediately above{' '}
+              <code className="text-emerald-300/90">[Peer]</code> and some without: a real label becomes{' '}
+              <strong className="text-slate-200">username</strong>. If that line is missing, empty, or only a
+              placeholder like <code className="text-emerald-300/90">{"# User: <username>"}</code>, the tunnel
+              IPv4 is used instead (first <code className="text-emerald-300/90">AllowedIPs</code> address in your VPN
+              client subnet, else the first IPv4 in the list). After import, peers are normalized with{' '}
+              <code className="text-emerald-300/90"># User: …</code> before each <code className="text-emerald-300/90">[Peer]</code>.
+              Dashboard saves update this file. Peers without <code className="text-emerald-300/90">AllowedIPs</code>{' '}
+              are skipped.
             </p>
 
             <div>

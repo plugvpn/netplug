@@ -9,6 +9,8 @@ import {
   inferClientAddressRange,
 } from '@/lib/wireguard/parse-wg-conf'
 import { wgPubkeyFromPrivate } from '@/lib/wireguard/wg-pubkey'
+import { prepareImportedVpnUsers } from '@/lib/wireguard/import-peers-from-conf'
+import { syncUploadedWgConfPeersFromDatabase } from '@/lib/wireguard/uploaded-conf-sync'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -133,8 +135,6 @@ export async function POST(request: NextRequest) {
       },
     }
 
-    await markSetupComplete(vpnConfiguration)
-
     await prisma.vPNServer.upsert({
       where: { id: 'wireguard' },
       update: {
@@ -160,6 +160,47 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const { users: importedUsers, skipped: skippedPeers } =
+      prepareImportedVpnUsers(parsed.peers, clientAddressRange, publicKey)
+
+    if (importedUsers.length > 0) {
+      try {
+        await prisma.$transaction(
+          importedUsers.map((u) =>
+            prisma.vPNUser.create({
+              data: {
+                username: u.username,
+                serverId: 'wireguard',
+                allowedIps: u.allowedIps,
+                publicKey: u.publicKey,
+                presharedKey: u.presharedKey,
+                privateKey: null,
+                commonName: null,
+              },
+            })
+          )
+        )
+      } catch (importErr: unknown) {
+        console.error('[Setup] Failed to import peers from wg0.conf:', importErr)
+        return NextResponse.json(
+          {
+            error:
+              'Could not import VPN users from peer entries (duplicate username or database error). Remove conflicting users or fix wg0.conf.',
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    const syncedComments = await syncUploadedWgConfPeersFromDatabase()
+    if (!syncedComments) {
+      console.warn(
+        '[Setup] Imported peers but could not rewrite wg0.conf with # User lines; check DATA_DIR and file permissions'
+      )
+    }
+
+    await markSetupComplete(vpnConfiguration)
+
     try {
       await initializeWireGuard('wg0')
     } catch (error) {
@@ -171,7 +212,12 @@ export async function POST(request: NextRequest) {
 
     const response = NextResponse.json({
       success: true,
-      message: 'Setup completed using uploaded wg0.conf',
+      message:
+        importedUsers.length > 0
+          ? `Setup completed using uploaded wg0.conf; imported ${importedUsers.length} peer(s) as VPN users.`
+          : 'Setup completed using uploaded wg0.conf',
+      importedPeers: importedUsers.length,
+      skippedPeers,
     })
 
     response.cookies.set('setup-complete', 'true', {

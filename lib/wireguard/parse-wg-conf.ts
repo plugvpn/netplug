@@ -14,6 +14,8 @@ export interface ParsedWgPeer {
   allowedIPs?: string
   presharedKey?: string
   persistentKeepalive?: number
+  /** From `# User: ...` on the line(s) immediately before this [Peer] (may follow the prior peer's keys). */
+  userComment?: string
 }
 
 export interface ParsedWgServerConf {
@@ -45,6 +47,7 @@ export function parseWgQuickServerConf(content: string): ParsedWgServerConf {
   const iface: Partial<ParsedWgInterface> & { privateKey?: string; addressRaw?: string } = {}
   const peers: ParsedWgPeer[] = []
   let currentPeer: Partial<ParsedWgPeer> | null = null
+  let pendingUserComment: string | undefined
 
   const flushPeer = () => {
     if (currentPeer?.publicKey) {
@@ -53,12 +56,24 @@ export function parseWgQuickServerConf(content: string): ParsedWgServerConf {
         allowedIPs: currentPeer.allowedIPs,
         presharedKey: currentPeer.presharedKey,
         persistentKeepalive: currentPeer.persistentKeepalive,
+        userComment: currentPeer.userComment,
       })
     }
     currentPeer = null
   }
 
   for (const raw of lines) {
+    const trimmedStart = raw.trimStart()
+    if (trimmedStart.startsWith('#')) {
+      // Apply to the next [Peer], even if it appears after the previous peer's fields
+      // (we stay in section === 'peer' until the next [Peer] line).
+      const userMatch = raw.match(/^\s*#\s*User:\s*(.+?)\s*$/)
+      if (userMatch) {
+        pendingUserComment = userMatch[1].trim()
+      }
+      continue
+    }
+
     const line = stripComment(raw)
     if (!line) continue
 
@@ -66,15 +81,20 @@ export function parseWgQuickServerConf(content: string): ParsedWgServerConf {
       if (line.toLowerCase() === '[interface]') {
         flushPeer()
         section = 'interface'
+        pendingUserComment = undefined
         continue
       }
       if (line.toLowerCase() === '[peer]') {
         flushPeer()
         section = 'peer'
-        currentPeer = {}
+        currentPeer = {
+          userComment: pendingUserComment,
+        }
+        pendingUserComment = undefined
         continue
       }
       section = 'none'
+      pendingUserComment = undefined
       continue
     }
 
