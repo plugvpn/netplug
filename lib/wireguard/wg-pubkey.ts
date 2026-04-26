@@ -1,20 +1,45 @@
-import { execFile } from 'node:child_process/promises'
+import { spawn } from 'child_process'
 
 /**
  * Derive a WireGuard public key from a private key using `wg pubkey` (stdin).
  */
-export async function wgPubkeyFromPrivate(privateKey: string): Promise<string> {
+export function wgPubkeyFromPrivate(privateKey: string): Promise<string> {
   const trimmed = privateKey.trim()
   if (!trimmed) {
-    throw new Error('Private key is empty')
+    return Promise.reject(new Error('Private key is empty'))
   }
-  const { stdout } = await execFile('wg', ['pubkey'], {
-    input: `${trimmed}\n`,
-    maxBuffer: 64 * 1024,
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('wg', ['pubkey'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `wg pubkey exited with code ${code}`))
+        return
+      }
+      const out = stdout.trim()
+      if (!out) {
+        reject(new Error('wg pubkey returned empty output'))
+        return
+      }
+      resolve(out)
+    })
+
+    child.stdin.write(`${trimmed}\n`)
+    child.stdin.end()
   })
-  const out = stdout.trim()
-  if (!out) {
-    throw new Error('wg pubkey returned empty output')
-  }
-  return out
 }

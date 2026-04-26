@@ -6,6 +6,7 @@ import { Server, Save, RefreshCw, Copy, Check } from "lucide-react";
 
 interface WireGuardConfig {
   enabled: boolean;
+  configSource?: "wizard" | "uploaded";
   serverHost: string;
   serverPort: number;
   serverAddress: string;
@@ -92,6 +93,7 @@ export default function WireguardConfigPage() {
   const [originalConfig, setOriginalConfig] = useState<WireGuardConfig | null>(null);
   const [server, setServer] = useState<ServerInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [publicKeyCopied, setPublicKeyCopied] = useState(false);
@@ -102,27 +104,44 @@ export default function WireguardConfigPage() {
   }, []);
 
   const fetchConfig = async () => {
+    setLoadError(null);
     try {
       const response = await fetch('/api/wireguard');
-      if (response.ok) {
-        const data = await response.json();
-        console.log('=== WireGuard API Response ===');
-        console.log('Full response:', data);
-        console.log('Server object:', data.server);
-        console.log('Server has privateKey:', !!data.server?.privateKey);
-        console.log('Server has publicKey:', !!data.server?.publicKey);
-        if (data.server?.publicKey) {
-          console.log('Public key value:', data.server.publicKey);
-        }
-        console.log('=============================');
-        setConfig(data.config);
-        setOriginalConfig(data.config);
-        setServer(data.server);
-      } else {
-        console.error('API request failed:', response.status, response.statusText);
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 401) {
+        setLoadError('You need to sign in again to view WireGuard settings.');
+        setConfig(null);
+        setServer(null);
+        return;
       }
+
+      if (!response.ok) {
+        setLoadError(
+          typeof data.error === 'string'
+            ? data.error
+            : `Could not load WireGuard configuration (${response.status}).`
+        );
+        setConfig(null);
+        setServer(null);
+        return;
+      }
+
+      if (!data.config) {
+        setLoadError('WireGuard configuration is missing from the server.');
+        setConfig(null);
+        setServer(null);
+        return;
+      }
+
+      setConfig(data.config);
+      setOriginalConfig(data.config);
+      setServer(data.server ?? null);
     } catch (error) {
       console.error('Failed to fetch WireGuard configuration:', error);
+      setLoadError('Network error while loading WireGuard configuration.');
+      setConfig(null);
+      setServer(null);
     } finally {
       setLoading(false);
     }
@@ -201,7 +220,10 @@ export default function WireguardConfigPage() {
       <div className="h-full">
         <PageHeader title="Wireguard">
           <button
-            onClick={fetchConfig}
+            onClick={() => {
+              setLoading(true);
+              fetchConfig();
+            }}
             disabled={loading}
             className="flex items-center gap-2 rounded border border-gray-300 px-4 py-1.5 text-sm font-normal text-gray-600 transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:border-gray-500"
           >
@@ -209,8 +231,19 @@ export default function WireguardConfigPage() {
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
         </PageHeader>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-600 dark:text-gray-400">WireGuard is not configured yet.</div>
+        <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
+          <p className="text-center text-gray-600 dark:text-gray-400 max-w-lg">
+            {loadError ||
+              'WireGuard is not configured yet. Finish the setup wizard or check the database.'}
+          </p>
+          {loadError?.includes('sign in') && (
+            <a
+              href="/login"
+              className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+            >
+              Go to login
+            </a>
+          )}
         </div>
       </div>
     );
@@ -237,6 +270,18 @@ export default function WireguardConfigPage() {
               Configure and manage your WireGuard VPN server settings
             </p>
           </div>
+
+          {config.configSource === 'uploaded' && (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+              <p className="font-medium">Initial setup used an uploaded wg0.conf</p>
+              <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">
+                Dashboard values below are for display and client exports. The live interface file{' '}
+                <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">wg0.conf</code> is
+                not regenerated from this form; edit the file on disk (under DATA_DIR) or use Save to
+                update metadata only.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-6">
             {/* Server Status */}
@@ -303,11 +348,8 @@ export default function WireguardConfigPage() {
                   ) : (
                     <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900 dark:bg-yellow-950">
                       <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        Public key not available.
-                        {server.privateKey ? ' Deriving from private key...' : ' Please ensure the server has a private key configured.'}
-                      </p>
-                      <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
-                        Debug: privateKey={server.privateKey ? 'exists' : 'missing'}, publicKey={server.publicKey ? 'exists' : 'missing'}
+                        Public key not available. Re-run setup or check that the WireGuard server row
+                        exists in the database.
                       </p>
                     </div>
                   )}

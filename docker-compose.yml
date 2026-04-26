@@ -1,18 +1,43 @@
+version: '3.8'
+
+# Optional: create a `.env` next to this file (Compose loads it automatically) or export vars before `docker compose up`.
+# Supported overrides:
+#   DASHBOARD_PORT   host port for the app (default 3000)
+#   WIREGUARD_PORT   host UDP port mapped to WireGuard (default 51820)
+#   DATABASE_URL     SQLite URL inside the container (default file:/data/prod.db)
+#   DATA_DIR         app data directory (default /data)
+#   AUTH_SECRET      required in real deployments; default below is for local use only
+#   AUTH_URL         public URL of the dashboard (default http://localhost:3000)
+#   LOG_FILE         optional path for captured server logs; if empty, the app picks a writable path
+
 services:
   dashboard:
     build: .
     container_name: netplug-dashboard
+    privileged: true
+    user: root
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+      # - NET_RAW # ⚠️ Uncomment if using Podman
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
     ports:
-      - "3000:3000/tcp"
-      - "51820:51820/udp"
+      - "${DASHBOARD_PORT:-3000}:3000/tcp"
+      - "${WIREGUARD_PORT:-51820}:51820/udp"
     environment:
-      NODE_ENV: "production"
-      DATABASE_URL: "file:/data/prod.db"
-      DATA_DIR: /data
-      AUTH_SECRET: "supersecretkey"
-      AUTH_URL: "http://localhost:3000"
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-file:/data/prod.db}
+      DATA_DIR: ${DATA_DIR:-/data}
+      AUTH_SECRET: ${AUTH_SECRET:-supersecretkey}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      LOG_FILE: ${LOG_FILE:-}
     volumes:
-      - $PWD/sandbox:/data
+      - ./sandbox:/data
     restart: unless-stopped
     networks:
       - netplug-network

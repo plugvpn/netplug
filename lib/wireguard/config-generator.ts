@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { getPrimarySystemConfig } from "@/lib/setup";
 import fs from "fs/promises";
 import path from "path";
 
 export async function isWireGuardConfigUploaded(): Promise<boolean> {
-  const systemConfig = await prisma.systemConfig.findFirst();
+  const systemConfig = await getPrimarySystemConfig();
   const wg = (systemConfig?.vpnConfiguration as any)?.wireGuard;
   return wg?.configSource === "uploaded";
 }
@@ -28,7 +29,7 @@ interface WireGuardConfig {
 export async function generateWireGuardConfig(): Promise<string | null> {
   try {
     // Get WireGuard configuration from SystemConfig
-    const systemConfig = await prisma.systemConfig.findFirst();
+    const systemConfig = await getPrimarySystemConfig();
     const vpnConfig = systemConfig?.vpnConfiguration as any;
 
     if (vpnConfig?.wireGuard?.configSource === "uploaded") {
@@ -222,7 +223,7 @@ export async function generateClientConfig(userId: string): Promise<string | nul
     }
 
     // Get WireGuard configuration
-    const systemConfig = await prisma.systemConfig.findFirst();
+    const systemConfig = await getPrimarySystemConfig();
     const vpnConfig = systemConfig?.vpnConfiguration as any;
 
     if (!vpnConfig?.wireGuard) {

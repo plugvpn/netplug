@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 
 type SetupMode = 'wizard' | 'upload'
 
+function goToDashboardAfterSetup() {
+  window.location.assign('/dashboard')
+}
+
 export default function VPNConfigPage() {
-  const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [setupMode, setSetupMode] = useState<SetupMode>('wizard')
   const [loading, setLoading] = useState(false)
@@ -195,7 +197,7 @@ export default function VPNConfigPage() {
         return
       }
 
-      router.push('/dashboard')
+      goToDashboardAfterSetup()
     } catch {
       setError('An unexpected error occurred')
       setLoading(false)
@@ -253,8 +255,7 @@ export default function VPNConfigPage() {
         return
       }
 
-      // Redirect to dashboard
-      router.push('/dashboard')
+      goToDashboardAfterSetup()
     } catch (err) {
       setError('An unexpected error occurred')
       setLoading(false)

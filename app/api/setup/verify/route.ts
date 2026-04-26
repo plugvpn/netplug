@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { isSetupComplete } from '@/lib/setup'
+import { secureSetupCookie } from '@/lib/setup-cookie'
 
 export async function GET() {
   try {
@@ -12,7 +13,7 @@ export async function GET() {
       // Set cookie to track setup completion
       response.cookies.set('setup-complete', 'true', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: secureSetupCookie(),
         sameSite: 'lax',
         maxAge: 60 * 60 * 24 * 365, // 1 year
         path: '/',

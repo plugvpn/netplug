@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { markSetupComplete, isSetupComplete } from '@/lib/setup'
+import { secureSetupCookie } from '@/lib/setup-cookie'
+import { prisma } from '@/lib/prisma'
 import { initializeWireGuard } from '@/lib/wireguard/sync-service'
 import { writeWireGuardConfig } from '@/lib/wireguard/config-generator'
 import path from 'path'
@@ -88,60 +90,49 @@ export async function POST(request: NextRequest) {
     const serverPublicKey = wireGuard.publicKey
     console.log('[WireGuard] Using provided key pair for server (wg0 interface)')
 
-    // Create VPNServer records in the database
-    const { PrismaClient } = await import('@prisma/client')
-    const prisma = new PrismaClient()
+    await prisma.vPNServer.upsert({
+      where: { id: 'wireguard' },
+      update: {
+        name: 'WireGuard Server',
+        protocol: 'wireguard',
+        host: wireGuard.serverHost,
+        port: parseInt(wireGuard.serverPort),
+        configPath: path.join(process.env.DATA_DIR || '/data', 'wg0.conf'),
+        isActive: true,
+        privateKey: serverPrivateKey,
+        publicKey: serverPublicKey,
+      },
+      create: {
+        id: 'wireguard',
+        name: 'WireGuard Server',
+        protocol: 'wireguard',
+        host: wireGuard.serverHost,
+        port: parseInt(wireGuard.serverPort),
+        configPath: path.join(process.env.DATA_DIR || '/data', 'wg0.conf'),
+        isActive: true,
+        privateKey: serverPrivateKey,
+        publicKey: serverPublicKey,
+      },
+    })
 
-    try {
-      // Create WireGuard server record
-      await prisma.vPNServer.upsert({
-        where: { id: 'wireguard' },
-        update: {
-          name: 'WireGuard Server',
-          protocol: 'wireguard',
-          host: wireGuard.serverHost,
-          port: parseInt(wireGuard.serverPort),
-          configPath: path.join(process.env.DATA_DIR || '/data', 'wg0.conf'),
-          isActive: true,
-          privateKey: serverPrivateKey,
-          publicKey: serverPublicKey,
-        },
-        create: {
-          id: 'wireguard',
-          name: 'WireGuard Server',
-          protocol: 'wireguard',
-          host: wireGuard.serverHost,
-          port: parseInt(wireGuard.serverPort),
-          configPath: path.join(process.env.DATA_DIR || '/data', 'wg0.conf'),
-          isActive: true,
-          privateKey: serverPrivateKey,
-          publicKey: serverPublicKey,
-        },
-      })
+    console.log('[Setup] WireGuard server configuration saved')
 
-      console.log('[Setup] WireGuard server configuration saved')
+    console.log('[Setup] Generating WireGuard configuration file...')
+    const configWritten = await writeWireGuardConfig()
 
-      // Generate and write the wg0.conf file
-      console.log('[Setup] Generating WireGuard configuration file...')
-      const configWritten = await writeWireGuardConfig()
+    if (!configWritten) {
+      console.error('[Setup] Failed to write WireGuard configuration file')
+    } else {
+      console.log('[Setup] ✓ WireGuard configuration file created')
 
-      if (!configWritten) {
-        console.error('[Setup] Failed to write WireGuard configuration file')
-      } else {
-        console.log('[Setup] ✓ WireGuard configuration file created')
-
-        // Bring up the WireGuard interface
-        console.log('[Setup] Bringing up WireGuard interface...')
-        try {
-          await initializeWireGuard('wg0')
-          console.log('[Setup] ✓ WireGuard interface is up and running')
-        } catch (error) {
-          console.error('[Setup] Failed to bring up WireGuard interface:', error)
-          console.warn('[Setup] You may need to run "sudo wg-quick up wg0" manually')
-        }
+      console.log('[Setup] Bringing up WireGuard interface...')
+      try {
+        await initializeWireGuard('wg0')
+        console.log('[Setup] ✓ WireGuard interface is up and running')
+      } catch (error) {
+        console.error('[Setup] Failed to bring up WireGuard interface:', error)
+        console.warn('[Setup] You may need to run "sudo wg-quick up wg0" manually')
       }
-    } finally {
-      await prisma.$disconnect()
     }
 
     // Create response with setup-complete cookie
@@ -153,7 +144,7 @@ export async function POST(request: NextRequest) {
     // Set cookie to track setup completion (for middleware)
     response.cookies.set('setup-complete', 'true', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: secureSetupCookie(),
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 365, // 1 year
       path: '/',

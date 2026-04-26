@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { markSetupComplete, isSetupComplete } from '@/lib/setup'
+import { secureSetupCookie } from '@/lib/setup-cookie'
+import { prisma } from '@/lib/prisma'
 import { initializeWireGuard } from '@/lib/wireguard/sync-service'
 import {
   parseWgQuickServerConf,
@@ -133,36 +135,30 @@ export async function POST(request: NextRequest) {
 
     await markSetupComplete(vpnConfiguration)
 
-    const { PrismaClient } = await import('@prisma/client')
-    const prisma = new PrismaClient()
-    try {
-      await prisma.vPNServer.upsert({
-        where: { id: 'wireguard' },
-        update: {
-          name: 'WireGuard Server',
-          protocol: 'wireguard',
-          host: serverHost,
-          port,
-          configPath,
-          isActive: true,
-          privateKey: parsed.interface.privateKey,
-          publicKey,
-        },
-        create: {
-          id: 'wireguard',
-          name: 'WireGuard Server',
-          protocol: 'wireguard',
-          host: serverHost,
-          port,
-          configPath,
-          isActive: true,
-          privateKey: parsed.interface.privateKey,
-          publicKey,
-        },
-      })
-    } finally {
-      await prisma.$disconnect()
-    }
+    await prisma.vPNServer.upsert({
+      where: { id: 'wireguard' },
+      update: {
+        name: 'WireGuard Server',
+        protocol: 'wireguard',
+        host: serverHost,
+        port,
+        configPath,
+        isActive: true,
+        privateKey: parsed.interface.privateKey,
+        publicKey,
+      },
+      create: {
+        id: 'wireguard',
+        name: 'WireGuard Server',
+        protocol: 'wireguard',
+        host: serverHost,
+        port,
+        configPath,
+        isActive: true,
+        privateKey: parsed.interface.privateKey,
+        publicKey,
+      },
+    })
 
     try {
       await initializeWireGuard('wg0')
@@ -180,7 +176,7 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set('setup-complete', 'true', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: secureSetupCookie(),
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 365,
       path: '/',
