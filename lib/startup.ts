@@ -1,5 +1,6 @@
 import { initializeWireGuard, startWireGuardSyncService, bringDownWireGuard } from './wireguard/sync-service';
 import { existsSync, unlinkSync } from 'fs';
+import path from 'path';
 import { mkdir } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { execSync } from 'child_process';
@@ -17,6 +18,27 @@ let cleanupExecuted = false;
 function isDisposableSandboxDatabasePath(dbPath: string): boolean {
   const normalized = dbPath.replace(/\\/g, '/');
   return normalized.includes('/prisma/sandbox/');
+}
+
+/**
+ * Production images may put a full Prisma CLI on PATH (e.g. /opt/prisma-migrate); the
+ * Next.js standalone bundle can ship an incomplete `node_modules/prisma`, so prefer PATH.
+ */
+function prismaMigrateCommand(): string {
+  try {
+    if (process.platform === 'win32') {
+      execSync('where prisma', { stdio: 'ignore', env: process.env });
+    } else {
+      execSync('command -v prisma', { stdio: 'ignore', env: process.env });
+    }
+    return 'prisma migrate deploy';
+  } catch {
+    const prismaCli = path.join(process.cwd(), 'node_modules', 'prisma', 'build', 'index.js');
+    if (existsSync(prismaCli)) {
+      return `node "${prismaCli}" migrate deploy`;
+    }
+    return 'npx prisma migrate deploy';
+  }
 }
 
 /**
@@ -51,10 +73,12 @@ async function initializeDatabase() {
 
     console.log('[Startup] Applying Prisma migrations...');
 
+    const migrateCmd = prismaMigrateCommand();
+
     const maxMigrateAttempts = 2;
     for (let attempt = 0; attempt < maxMigrateAttempts; attempt++) {
       try {
-        const stdout = execSync('npx prisma migrate deploy', {
+        const stdout = execSync(migrateCmd, {
           cwd: process.cwd(),
           encoding: 'utf-8',
           env: process.env,
@@ -233,7 +257,11 @@ export async function runStartupTasks() {
     if (wireGuardSyncInterval) {
       clearInterval(wireGuardSyncInterval);
     }
-    wireGuardSyncInterval = startWireGuardSyncService('wg0', 10000);
+    const rawInterval = parseInt(process.env.WIREGUARD_SYNC_INTERVAL_MS || '30000', 10);
+    const syncIntervalMs = Number.isFinite(rawInterval)
+      ? Math.min(Math.max(rawInterval, 5000), 86_400_000)
+      : 30_000;
+    wireGuardSyncInterval = startWireGuardSyncService('wg0', syncIntervalMs);
 
     // Register cleanup handlers
     process.on('SIGINT', async () => {

@@ -1,21 +1,61 @@
-services:
+# Copy .env.example to .env and set secrets and publish ports.
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+    max-file: ${DOCKER_LOG_MAX_FILES:-3}
+
+services:
   netplug:
-    build: .
-    restart: always
-    container_name: netplug
-    ports:
-      - "32443:443/udp"
-      - "127.0.0.1:3000:3000/tcp"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_NAME:-netplug-wireguard}:${IMAGE_TAG:-latest}
+    container_name: ${NETPLUG_CONTAINER_NAME:-netplug-wireguard}
+    restart: ${NETPLUG_RESTART_POLICY:-unless-stopped}
+    init: true
+    logging: *default-logging
+    env_file:
+      - path: .env
+        required: false
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+      # - NET_RAW   # Uncomment on Podman if raw sockets fail
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
+    ports:
+      - "${WG_PORT:-51820}:${WG_PORT:-51820}/udp"
+      - "${DASHBOARD_PORT:-127.0.0.1:3000}:3000/tcp"
     environment:
-      DATABASE_URL: "file:/data/prod.db"
-      DATA_DIR: /data
-      AUTH_SECRET: "6ea8eeec6f71e373a6644f65b21828d89a8e07c35802ca"
-      AUTH_URL: "http://localhost:3000"
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-file:/data/prod.db}
+      DATA_DIR: ${DATA_DIR:-/data}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      LOG_FILE: ${LOG_FILE:-/data/server.log}
+      WIREGUARD_SYNC_INTERVAL_MS: ${WIREGUARD_SYNC_INTERVAL_MS:-30000}
+      WIREGUARD_VERBOSE_SYNC: ${WIREGUARD_VERBOSE_SYNC:-false}
+      WG_QUICK_TIMEOUT_MS: ${WG_QUICK_TIMEOUT_MS:-180000}
     volumes:
-      - "$PWD/sandbox:/data"
-      #- "$PWD/server.log:/app/server.log"
-      - "/lib/modules:/lib/modules:ro"
+      - ${DATA_PATH:-./data}:/data
+      - /lib/modules:/lib/modules:ro
+    deploy:
+      resources:
+        limits:
+          cpus: ${CPU_LIMIT:-1.0}
+          memory: ${MEMORY_LIMIT:-512M}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-128M}
+    networks:
+      - netplug
+
+networks:
+  netplug:
+    driver: bridge

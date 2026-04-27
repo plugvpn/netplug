@@ -46,6 +46,7 @@ next-env.d.ts
 *.db-shm
 *.db-wal
 /sandbox
+/data
 
 # logs
 server.log

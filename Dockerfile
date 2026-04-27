@@ -1,60 +1,65 @@
-FROM node:23-alpine AS base
+# syntax=docker/dockerfile:1
 
-# Install dependencies only when needed
+FROM node:22-alpine AS base
+
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
-# Copy dependency files (prisma/ is required before npm ci so postinstall can run prisma generate)
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml .npmrc ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN npm ci
+RUN --mount=type=cache,id=pnpm-store-netplug,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm install --frozen-lockfile --prefer-offline
 
-# Rebuild the source code only when needed
 FROM base AS builder
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
-# Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set environment variables
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Generate Prisma Client
-RUN npx prisma generate
+RUN pnpm exec prisma generate
 
-# Set dummy DATABASE_URL for build (won't be used at runtime)
 ENV DATABASE_URL="file:./build-dummy.db"
 
-# Build Next.js application
-RUN npm run build
+RUN pnpm run build
 
-# Production image, copy all the files and run next
+# Minimal Prisma CLI + engines for `migrate deploy` (avoids a global npm install and huge copies from the dev tree)
+FROM base AS prisma-migrate
+WORKDIR /opt/prisma-migrate
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN apk add --no-cache libc6-compat openssl
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
+
+COPY .npmrc ./
+RUN echo '{"name":"prisma-migrate","private":true,"pnpm":{"onlyBuiltDependencies":["@prisma/engines","prisma"]}}' > package.json
+
+RUN --mount=type=cache,id=pnpm-store-prisma-migrate,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm add prisma@6.19.3 --prod --prefer-offline
+
 FROM base AS runner
 WORKDIR /app
 
-# Install wireguard-tools, iptables, sqlite, and iproute2 in the runtime image
-RUN apk add --no-cache wireguard-tools iptables sqlite iproute2
+RUN apk add --no-cache wireguard-tools iptables sqlite iproute2 openssl
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PATH="/opt/prisma-migrate/node_modules/.bin:${PATH}"
 
-# Install Prisma CLI for migrations
-RUN npm install -g prisma
-
-# Copy necessary files from builder
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-
-# Copy Prisma files and generated client
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/prisma ./prisma
+COPY --from=prisma-migrate /opt/prisma-migrate/node_modules /opt/prisma-migrate/node_modules
 
 EXPOSE 3000
 
