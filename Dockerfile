@@ -5,8 +5,9 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Copy dependency files
+# Copy dependency files (prisma/ is required before npm ci so postinstall can run prisma generate)
 COPY package.json package-lock.json ./
+COPY prisma ./prisma/
 
 # Install dependencies
 RUN npm ci
