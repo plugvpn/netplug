@@ -1,0 +1,279 @@
+{{define "base.tmpl"}}
+<!doctype html>
+<html lang="en" class="h-full dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{.Title}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.6"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@0.563.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <style>
+      /* From original globals.css (scrollbars + base) */
+      * { scrollbar-width: thin; scrollbar-color: #374151 #1f2937; }
+      *::-webkit-scrollbar { width: 8px; height: 8px; }
+      *::-webkit-scrollbar-track { background: #1f2937; }
+      *::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+      *::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+      html { background-color: #f9fafb; }
+      html.dark { background-color: #030712; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #f9fafb;
+        min-height: 100vh;
+      }
+      body.dark, .dark body { background-color: #030712; }
+    </style>
+    <script>
+      // Dark-first like the original UI (can be toggled).
+      (function () {
+        try {
+          var v = localStorage.getItem('theme');
+          if (v === 'light') {
+            document.documentElement.classList.remove('dark');
+            return;
+          }
+          if (v === 'dark' || !v) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+      function toggleTheme() {
+        var isDark = document.documentElement.classList.toggle('dark');
+        try { localStorage.setItem('theme', isDark ? 'dark' : 'light'); } catch (e) {}
+      }
+      function toggleSidebar() {
+        var el = document.getElementById('sidebar');
+        if (!el) return;
+        var collapsed = el.dataset.collapsed === 'true';
+        el.dataset.collapsed = collapsed ? 'false' : 'true';
+        try {
+          var left = el.querySelector('[data-lucide="chevron-left"]');
+          var right = el.querySelector('[data-lucide="chevron-right"]');
+          if (left && right) {
+            left.style.display = collapsed ? '' : 'none';
+            right.style.display = collapsed ? 'none' : '';
+          }
+        } catch (e) {}
+        try { document.cookie = "sidebar-collapsed=" + (!collapsed) + "; path=/; max-age=31536000"; } catch (e) {}
+      }
+      function readCookie(name) {
+        try {
+          var s = document.cookie || '';
+          if (!s) return '';
+          var parts = s.split('; ');
+          for (var i = 0; i < parts.length; i++) {
+            var p = parts[i];
+            var eq = p.indexOf('=');
+            if (eq < 0) continue;
+            var k = '';
+            var v = '';
+            try { k = decodeURIComponent(p.slice(0, eq)); } catch (e) { k = p.slice(0, eq); }
+            if (k !== name) continue;
+            try { v = decodeURIComponent(p.slice(eq + 1)); } catch (e) { v = p.slice(eq + 1); }
+            return v;
+          }
+          return '';
+        } catch (e) { return ''; }
+      }
+      document.addEventListener('DOMContentLoaded', function () {
+        var el = document.getElementById('sidebar');
+        if (!el) return;
+        var v = readCookie('sidebar-collapsed');
+        if (v === 'true') el.dataset.collapsed = 'true';
+        try {
+          var left = el.querySelector('[data-lucide="chevron-left"]');
+          var right = el.querySelector('[data-lucide="chevron-right"]');
+          if (left && right) {
+            left.style.display = (v === 'true') ? 'none' : '';
+            right.style.display = (v === 'true') ? '' : 'none';
+          }
+        } catch (e) {}
+        try { lucide.createIcons(); } catch (e) {}
+        try { initBandwidthChart(); } catch (e) {}
+      });
+
+      document.addEventListener('htmx:afterSwap', function () {
+        try { lucide.createIcons(); } catch (e) {}
+        try { initBandwidthChart(); } catch (e) {}
+      });
+
+      var __bwChart = null;
+      async function initBandwidthChart() {
+        var canvas = document.getElementById('bandwidth-chart');
+        if (!canvas || !window.Chart) return;
+        var url = canvas.getAttribute('data-url');
+        if (!url) return;
+
+        // Ensure canvas has a height so Chart.js can render inside the card.
+        if (!canvas.style.height) canvas.style.height = '256px';
+        if (!canvas.style.width) canvas.style.width = '100%';
+
+        var res = await fetch(url, { credentials: 'same-origin' });
+        var history = [];
+        if (res.ok) {
+          try {
+            var json = await res.json();
+            history = (json && json.history) ? json.history : [];
+          } catch (e) {
+            history = [];
+          }
+        }
+        if (!Array.isArray(history)) history = [];
+
+        // Always render something, even if the API has no rows yet.
+        var labels = history.length
+          ? history.map(function (p) { return p.day ? String(p.day) : ''; })
+          : Array.from({length: 31}, function(_, i) { return String(i + 1); });
+        var download = history.length
+          ? history.map(function (p) { return p.downloadTotal || 0; })
+          : Array.from({length: 31}, function() { return 0; });
+        var upload = history.length
+          ? history.map(function (p) { return p.uploadTotal || 0; })
+          : Array.from({length: 31}, function() { return 0; });
+
+        var ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        if (__bwChart) {
+          __bwChart.destroy();
+          __bwChart = null;
+        }
+
+        var g1 = ctx.createLinearGradient(0, 0, 0, canvas.height || 256);
+        g1.addColorStop(0, 'rgba(59,130,246,0.30)');
+        g1.addColorStop(1, 'rgba(59,130,246,0.00)');
+        var g2 = ctx.createLinearGradient(0, 0, 0, canvas.height || 256);
+        g2.addColorStop(0, 'rgba(16,185,129,0.30)');
+        g2.addColorStop(1, 'rgba(16,185,129,0.00)');
+
+        function formatBytes(bytes) {
+          var b = Number(bytes || 0);
+          var kb = b / 1024, mb = kb / 1024, gb = mb / 1024, tb = gb / 1024;
+          if (tb >= 1) return tb.toFixed(2) + ' TB';
+          if (gb >= 1) return gb.toFixed(2) + ' GB';
+          if (mb >= 1) return mb.toFixed(2) + ' MB';
+          if (kb >= 1) return kb.toFixed(2) + ' KB';
+          return b.toFixed(0) + ' B';
+        }
+
+        var isDark = document.documentElement.classList.contains('dark');
+        var grid = isDark ? 'rgba(55,65,81,0.6)' : 'rgba(229,231,235,0.8)';
+        var ticks = isDark ? '#9ca3af' : '#6b7280';
+
+        __bwChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              { label: 'Download', data: download, borderColor: '#3b82f6', backgroundColor: g1, fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
+              { label: 'Upload', data: upload, borderColor: '#10b981', backgroundColor: g2, fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: {
+                  usePointStyle: true,
+                  pointStyle: 'circle',
+                  color: ticks,
+                  font: { size: 14 }
+                }
+              },
+              tooltip: {
+                backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                borderColor: isDark ? '#374151' : '#e5e7eb',
+                borderWidth: 1,
+                titleColor: ticks,
+                bodyColor: isDark ? '#e5e7eb' : '#111827',
+                callbacks: {
+                  label: function (ctx) {
+                    return ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y);
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { color: grid },
+                ticks: { color: ticks, font: { size: 12 } },
+                title: { display: true, text: 'Day of Month', color: ticks }
+              },
+              y: {
+                grid: { color: grid },
+                ticks: { color: ticks, font: { size: 12 }, callback: function (v) { return formatBytes(v); } }
+              }
+            }
+          }
+        });
+      }
+    </script>
+  </head>
+  <body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+    <div id="np-toast-root" class="fixed right-6 top-6 z-[100] space-y-3"></div>
+    <div class="flex h-screen overflow-hidden">
+      {{template "sidebar.tmpl" .}}
+      <main class="flex-1 overflow-y-auto">
+        {{.Body}}
+      </main>
+    </div>
+    <script>
+      (function () {
+        function showToast(type, message) {
+          try {
+            var root = document.getElementById('np-toast-root');
+            if (!root) return;
+            var t = (type || 'success').toLowerCase();
+            var isErr = (t === 'error' || t === 'danger' || t === 'fail' || t === 'failed');
+            var el = document.createElement('div');
+            el.className =
+              'w-[360px] max-w-[calc(100vw-3rem)] rounded-lg border px-4 py-3 shadow-2xl backdrop-blur ' +
+              (isErr
+                ? 'border-red-900/60 bg-red-950/80 text-red-100'
+                : 'border-emerald-900/60 bg-emerald-950/70 text-emerald-50');
+
+            var title = document.createElement('div');
+            title.className = 'text-sm font-medium';
+            title.textContent = isErr ? 'Error' : 'Success';
+
+            var body = document.createElement('div');
+            body.className = 'mt-1 text-sm opacity-90';
+            body.textContent = String(message || '');
+
+            el.appendChild(title);
+            el.appendChild(body);
+            root.appendChild(el);
+
+            setTimeout(function () {
+              try { el.style.opacity = '0'; el.style.transition = 'opacity 300ms'; } catch (e) {}
+            }, 3200);
+            setTimeout(function () {
+              try { if (el && el.parentNode) el.parentNode.removeChild(el); } catch (e) {}
+            }, 3600);
+          } catch (e) {}
+        }
+
+        document.body.addEventListener('toast', function (e) {
+          try {
+            var d = (e && e.detail) ? e.detail : {};
+            showToast(d.type || 'success', d.message || '');
+          } catch (e) {}
+        });
+
+        document.body.addEventListener('usersReload', function () {
+          setTimeout(function () {
+            try { window.location.reload(); } catch (e) {}
+          }, 600);
+        });
+      })();
+    </script>
+  </body>
+</html>
+{{end}}
+

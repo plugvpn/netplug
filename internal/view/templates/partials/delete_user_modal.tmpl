@@ -1,0 +1,73 @@
+{{define "partials/delete_user_modal.tmpl"}}
+<div class="fixed inset-0 z-50 flex items-center justify-center">
+  <div
+    class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+    hx-get="/partials/empty"
+    hx-target="#modal-root"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div class="relative w-full max-w-md rounded-xl border border-gray-800 bg-gray-900 shadow-2xl overflow-hidden">
+    <div class="flex items-start justify-between border-b border-gray-800 px-6 py-4">
+      <div>
+        <div class="text-sm font-semibold text-gray-100">Delete User</div>
+        <div class="text-xs text-gray-400">This action cannot be undone</div>
+      </div>
+      <button
+        class="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+        type="button"
+      >
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+
+    <div class="px-6 py-5">
+      <div class="rounded-lg border border-red-900/40 bg-red-950/30 p-4">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 rounded-full bg-red-500/10 p-2 text-red-300">
+            <i data-lucide="triangle-alert" class="h-4 w-4" style="stroke-width:1.5"></i>
+          </div>
+          <div>
+            <div class="text-sm font-medium text-gray-100">Are you sure?</div>
+            <div class="mt-1 text-sm text-gray-300">
+              Delete user <span class="font-mono text-red-200">{{.Username}}</span> and remove their peer from <span class="font-mono">wg0.conf</span>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <form
+        class="mt-5 flex items-center gap-3"
+        method="post"
+        action="/dashboard/users/{{.UserID}}/delete"
+        hx-post="/dashboard/users/{{.UserID}}/delete"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+      >
+        <button
+          type="button"
+          class="flex-1 h-9 rounded border border-gray-700 bg-gray-900 text-sm text-gray-200 hover:bg-gray-800"
+          hx-get="/partials/empty"
+          hx-target="#modal-root"
+          hx-swap="innerHTML"
+        >
+          Cancel
+        </button>
+        <button class="flex-1 h-9 rounded bg-red-600 text-sm font-medium text-white hover:bg-red-500">
+          Delete
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    try { lucide.createIcons(); } catch (e) {}
+  })();
+</script>
+{{end}}
+

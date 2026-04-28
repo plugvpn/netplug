@@ -1,0 +1,133 @@
+{{define "partials/qr_modal.tmpl"}}
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm overflow-y-auto">
+  <div
+    class="absolute inset-0"
+    hx-get="/partials/empty"
+    hx-target="#modal-root"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div class="relative my-8 w-full max-w-2xl rounded-xl border border-gray-800 bg-gray-900 shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between border-b border-gray-800 p-6">
+      <div>
+        <h2 class="text-xl font-semibold text-gray-100">VPN Configuration QR Code</h2>
+        <p class="mt-1 text-sm text-gray-400">Scan this code or copy the configuration below</p>
+      </div>
+      <button
+        type="button"
+        class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+      >
+        <i data-lucide="x" class="h-5 w-5"></i>
+      </button>
+    </div>
+
+    <div class="p-6">
+      <div class="mb-6 w-full rounded-lg bg-gray-800/60 p-4 border border-gray-800">
+        <div class="mb-2 flex items-center gap-2 text-gray-200">
+          <i data-lucide="user" class="h-4 w-4 text-gray-400" style="stroke-width:1.5"></i>
+          <span class="font-medium">{{.Username}}</span>
+        </div>
+        <div class="text-sm text-gray-400 space-y-0.5">
+          <div>Server: {{.Server}}</div>
+          <div>Protocol: {{.Protocol}}</div>
+          {{if .IP}}<div>IP: {{.IP}}</div>{{end}}
+        </div>
+      </div>
+
+      <div class="mb-8 flex justify-center">
+        <div class="rounded-xl bg-white p-6 shadow-lg">
+          <canvas id="np-qr-canvas" width="256" height="256"></canvas>
+        </div>
+      </div>
+
+      <div class="w-full">
+        <div class="mb-3 flex items-center justify-between border-b border-gray-800 pb-3">
+          <div>
+            <h3 class="text-sm font-medium text-gray-100">Configuration File</h3>
+            <p class="text-xs text-gray-400 font-mono">{{.FileName}}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span id="np-conf-toggle-label" class="text-sm text-gray-400">Show</span>
+            <button
+              type="button"
+              id="np-conf-toggle"
+              class="relative h-7 w-14 rounded-full bg-gray-600 transition-colors"
+              aria-pressed="false"
+            >
+              <span class="absolute top-1 h-5 w-5 rounded-full bg-white shadow-lg transition-transform translate-x-1"></span>
+            </button>
+          </div>
+        </div>
+
+        <div id="np-conf-wrap" class="relative overflow-hidden rounded-lg border border-gray-800 bg-gray-950" style="display:none;">
+          <button
+            type="button"
+            id="np-conf-copy"
+            class="absolute right-3 top-3 z-10 rounded bg-gray-800/80 p-1.5 text-gray-300 backdrop-blur-sm transition-colors hover:text-white"
+            title="Copy to clipboard"
+          >
+            <i data-lucide="copy" class="h-4 w-4"></i>
+          </button>
+          <pre class="max-h-[360px] overflow-auto p-4 text-xs text-gray-200 font-mono leading-5"><code id="np-conf-text">{{.ConfigText}}</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t border-gray-800 p-6">
+      <button
+        type="button"
+        class="w-full rounded-lg border border-gray-700 bg-gray-900 px-6 py-3 font-medium text-gray-200 transition-all hover:bg-gray-800"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    try { lucide.createIcons(); } catch (e) {}
+
+    var textEl = document.getElementById('np-conf-text');
+    var confText = textEl ? (textEl.textContent || '') : '';
+    var canvas = document.getElementById('np-qr-canvas');
+    var QR = (window.QRCode && window.QRCode.toCanvas) ? window.QRCode : ((window.qrcode && window.qrcode.toCanvas) ? window.qrcode : null);
+    if (canvas && QR && confText) {
+      try {
+        QR.toCanvas(canvas, confText, { width: 256, margin: 1 }, function () {});
+      } catch (e) {}
+    }
+
+    var copyBtn = document.getElementById('np-conf-copy');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function () {
+        try { navigator.clipboard.writeText(confText || ''); } catch (e) {}
+      });
+    }
+
+    var toggle = document.getElementById('np-conf-toggle');
+    var wrap = document.getElementById('np-conf-wrap');
+    var lbl = document.getElementById('np-conf-toggle-label');
+    if (toggle && wrap) {
+      toggle.addEventListener('click', function () {
+        var on = toggle.getAttribute('aria-pressed') === 'true';
+        var next = !on;
+        toggle.setAttribute('aria-pressed', next ? 'true' : 'false');
+        wrap.style.display = next ? '' : 'none';
+        if (lbl) lbl.textContent = next ? 'Hide' : 'Show';
+        var dot = toggle.querySelector('span');
+        if (dot) dot.style.transform = next ? 'translateX(2rem)' : 'translateX(0.25rem)';
+        toggle.classList.toggle('bg-emerald-600', next);
+        toggle.classList.toggle('bg-gray-600', !next);
+      });
+    }
+  })();
+</script>
+{{end}}
+

@@ -1,0 +1,21 @@
+{{define "partials/dashboard_stats.tmpl"}}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="bg-slate-950/50 border border-slate-800 rounded p-4">
+    <div class="text-slate-400 text-xs">Users</div>
+    <div class="text-2xl font-semibold">{{.Stats.TotalUsers}}</div>
+  </div>
+  <div class="bg-slate-950/50 border border-slate-800 rounded p-4">
+    <div class="text-slate-400 text-xs">Enabled</div>
+    <div class="text-2xl font-semibold">{{.Stats.EnabledUsers}}</div>
+  </div>
+  <div class="bg-slate-950/50 border border-slate-800 rounded p-4">
+    <div class="text-slate-400 text-xs">Connected</div>
+    <div class="text-2xl font-semibold">{{.Stats.ConnectedUsers}}</div>
+  </div>
+  <div class="bg-slate-950/50 border border-slate-800 rounded p-4">
+    <div class="text-slate-400 text-xs">Active servers</div>
+    <div class="text-2xl font-semibold">{{.Stats.ActiveServers}}</div>
+  </div>
+</div>
+{{end}}
+

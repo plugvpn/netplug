@@ -1,0 +1,23 @@
+{{define "connections.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "connections.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div
+          hx-get="/partials/dashboard/active-connections"
+          hx-trigger="load, every 10s"
+          hx-swap="innerHTML"
+        ></div>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "connections.header_right"}}{{end}}
+

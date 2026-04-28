@@ -1,0 +1,115 @@
+{{define "setup.tmpl"}}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Setup</title>
+    <script src="https://unpkg.com/htmx.org@2.0.6"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen px-4 py-10">
+    <div class="max-w-3xl mx-auto">
+      <div class="mb-8">
+        <div class="text-2xl font-semibold">NetPlug setup</div>
+        <div class="text-slate-400 text-sm">Create an admin and configure WireGuard.</div>
+      </div>
+
+      {{if .Error}}
+      <div class="mb-5 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded p-3">{{.Error}}</div>
+      {{end}}
+
+      <div class="grid grid-cols-1 gap-6">
+        <div class="bg-slate-900/60 border border-slate-800 rounded-lg p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <div class="text-lg font-semibold">1) Admin account</div>
+              <div class="text-slate-400 text-sm">Only created once.</div>
+            </div>
+            {{if .HasAdmin}}
+              <div class="text-emerald-300 text-sm">Done</div>
+            {{end}}
+          </div>
+
+          {{if not .HasAdmin}}
+          <form method="post" action="/setup/admin" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <input name="username" placeholder="username" class="bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+            <input name="password" type="password" placeholder="password" class="bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+            <input name="confirm_password" type="password" placeholder="confirm" class="bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+            <div class="sm:col-span-3">
+              <button class="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 font-medium">Create admin</button>
+            </div>
+          </form>
+          {{else}}
+          <div class="text-slate-300 text-sm">Admin exists. Continue below.</div>
+          {{end}}
+        </div>
+
+        <div class="bg-slate-900/60 border border-slate-800 rounded-lg p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <div class="text-lg font-semibold">2) WireGuard</div>
+              <div class="text-slate-400 text-sm">Writes <code class="text-slate-200">wg0.conf</code> into your data dir.</div>
+            </div>
+            <button
+              class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sm"
+              hx-post="/setup/wireguard/generate-keys"
+              hx-target="#setup-keys"
+              hx-swap="innerHTML"
+              type="button"
+            >
+              Generate keys
+            </button>
+          </div>
+
+          <form method="post" action="/setup/wireguard" class="space-y-4">
+            <div id="setup-keys">
+              {{template "partials/setup_keys.tmpl" .}}
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Server host</label>
+                <input name="server_host" value="{{if .Prefill}}{{.Prefill.ServerHost}}{{else}}vpn.example.com{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Server port</label>
+                <input name="server_port" value="{{if .Prefill}}{{.Prefill.ServerPort}}{{else}}51820{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Server address</label>
+                <input name="server_address" value="{{if .Prefill}}{{.Prefill.ServerAddress}}{{else}}10.8.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Client CIDR</label>
+                <input name="client_address_range" value="{{if .Prefill}}{{.Prefill.ClientAddressRange}}{{else}}10.8.0.0/24{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1">DNS</label>
+                <input name="dns" value="{{if .Prefill}}{{.Prefill.DNS}}{{else}}1.1.1.1, 1.0.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1">Allowed IPs</label>
+                <input name="allowed_ips" value="{{if .Prefill}}{{.Prefill.AllowedIPs}}{{else}}0.0.0.0/0, ::/0{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">MTU</label>
+                <input name="mtu" value="{{if .Prefill}}{{.Prefill.MTU}}{{else}}1420{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Persistent keepalive</label>
+                <input name="persistent_keepalive" value="{{if .Prefill}}{{.Prefill.PersistentKeepalive}}{{else}}25{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+              </div>
+            </div>
+
+            <button class="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-medium" {{if not .HasAdmin}}disabled{{end}}>
+              Complete setup
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+{{end}}
+

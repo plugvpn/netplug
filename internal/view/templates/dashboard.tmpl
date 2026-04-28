@@ -1,0 +1,33 @@
+{{define "dashboard.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "dashboard.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div id="overview-grid" hx-get="/partials/overview/all" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "dashboard.header_right"}}
+<div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+  <div class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+  <span>Synced every 30s</span>
+</div>
+<button
+  class="flex items-center gap-2 rounded border border-gray-300 px-4 py-1.5 text-sm font-normal text-gray-600 transition-colors hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:border-gray-500"
+  hx-get="/partials/overview/all"
+  hx-target="#overview-grid"
+  hx-swap="innerHTML"
+  type="button"
+>
+  <i data-lucide="refresh-cw" class="h-4 w-4" style="stroke-width:1.5"></i>
+  Refresh
+</button>
+{{end}}
+

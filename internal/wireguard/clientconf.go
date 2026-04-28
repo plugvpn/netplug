@@ -1,0 +1,105 @@
+package wireguard
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"netplug-go/internal/db"
+)
+
+func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filename string, err error) {
+	if sqlDB == nil {
+		return "", "", errors.New("db is nil")
+	}
+
+	var (
+		username   string
+		privKey    sql.NullString
+		address    sql.NullString
+		psk        sql.NullString
+	)
+	err = sqlDB.QueryRow(`
+		SELECT username, private_key, allowed_ips, preshared_key
+		FROM vpn_users
+		WHERE id = ?
+		LIMIT 1
+	`, userID).Scan(&username, &privKey, &address, &psk)
+	if err != nil {
+		return "", "", err
+	}
+	if !privKey.Valid || strings.TrimSpace(privKey.String) == "" {
+		return "", "", errors.New("user has no private key")
+	}
+	if !address.Valid || strings.TrimSpace(address.String) == "" {
+		return "", "", errors.New("user has no address")
+	}
+
+	// `vpn_users.allowed_ips` is stored as: "<tunnel-ip-cidr>, <optional extra prefixes...>"
+	// For a client config, only the first CIDR belongs in [Interface] Address.
+	userAddr := strings.TrimSpace(address.String)
+	if i := strings.IndexByte(userAddr, ','); i >= 0 {
+		userAddr = strings.TrimSpace(userAddr[:i])
+	}
+	if userAddr == "" {
+		return "", "", errors.New("user has no address")
+	}
+
+	var (
+		serverPub  string
+		serverHost string
+		serverPort int
+	)
+	err = sqlDB.QueryRow(`SELECT public_key, host, COALESCE(port, 0) FROM vpn_servers WHERE id='wireguard' LIMIT 1`).Scan(&serverPub, &serverHost, &serverPort)
+	if err != nil {
+		return "", "", err
+	}
+
+	sys, err := db.GetSystemConfig(sqlDB)
+	if err != nil {
+		return "", "", err
+	}
+	var vc struct {
+		WireGuard struct {
+			DNS                 string `json:"dns"`
+			AllowedIPs          string `json:"allowedIps"`
+			PersistentKeepalive int    `json:"persistentKeepalive"`
+			MTU                 int    `json:"mtu"`
+		} `json:"wireGuard"`
+	}
+	_ = json.Unmarshal(sys.VPNConfigJSON, &vc)
+
+	allowed := strings.TrimSpace(vc.WireGuard.AllowedIPs)
+	if allowed == "" {
+		allowed = "0.0.0.0/0, ::/0"
+	}
+
+	var b strings.Builder
+	b.WriteString("[Interface]\n")
+	b.WriteString(fmt.Sprintf("PrivateKey = %s\n", strings.TrimSpace(privKey.String)))
+	b.WriteString(fmt.Sprintf("Address = %s\n", userAddr))
+	if strings.TrimSpace(vc.WireGuard.DNS) != "" {
+		b.WriteString(fmt.Sprintf("DNS = %s\n", strings.TrimSpace(vc.WireGuard.DNS)))
+	}
+	if vc.WireGuard.MTU > 0 {
+		b.WriteString(fmt.Sprintf("MTU = %d\n", vc.WireGuard.MTU))
+	}
+	b.WriteString("\n")
+	b.WriteString("[Peer]\n")
+	b.WriteString(fmt.Sprintf("PublicKey = %s\n", strings.TrimSpace(serverPub)))
+	if psk.Valid && strings.TrimSpace(psk.String) != "" {
+		b.WriteString(fmt.Sprintf("PresharedKey = %s\n", strings.TrimSpace(psk.String)))
+	}
+	b.WriteString(fmt.Sprintf("Endpoint = %s:%d\n", strings.TrimSpace(serverHost), serverPort))
+	b.WriteString(fmt.Sprintf("AllowedIPs = %s\n", allowed))
+	if vc.WireGuard.PersistentKeepalive > 0 {
+		b.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", vc.WireGuard.PersistentKeepalive))
+	}
+	b.WriteString("\n")
+
+	fn := fmt.Sprintf("%s.conf", username)
+	return b.String(), fn, nil
+}
+

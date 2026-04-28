@@ -1,0 +1,38 @@
+{{define "login.tmpl"}}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{.Title}}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center px-4">
+    <div class="w-full max-w-md bg-slate-900/60 border border-slate-800 rounded-lg p-6">
+      <div class="text-xl font-semibold mb-1">Sign in</div>
+      <div class="text-slate-400 text-sm mb-6">Use an admin account from the SQLite database.</div>
+
+      {{if .Error}}
+      <div class="mb-4 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded p-3">{{.Error}}</div>
+      {{end}}
+
+      <form method="post" action="/login" class="space-y-4">
+        <div>
+          <label class="block text-sm text-slate-300 mb-1">Username</label>
+          <input name="username" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" autocomplete="username" />
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300 mb-1">Password</label>
+          <input name="password" type="password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" autocomplete="current-password" />
+        </div>
+        <button class="w-full py-2 rounded bg-indigo-600 hover:bg-indigo-500 font-medium">Login</button>
+      </form>
+
+      <div class="mt-6 text-xs text-slate-500">
+        Tip: create a user by inserting into <code class="text-slate-300">users</code>.
+      </div>
+    </div>
+  </body>
+</html>
+{{end}}
+

@@ -1,0 +1,34 @@
+{{define "partials/active_connections.tmpl"}}
+<div class="overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-slate-400 border-b border-slate-800">
+        <th class="py-2 pr-3">User</th>
+        <th class="py-2 pr-3">Endpoint</th>
+        <th class="py-2 pr-3">Last handshake</th>
+        <th class="py-2 pr-3">Rx rate</th>
+        <th class="py-2 pr-3">Tx rate</th>
+        <th class="py-2 pr-3">Connected at</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{if not .Connections}}
+      <tr>
+        <td class="py-3 text-slate-400" colspan="6">No active connections.</td>
+      </tr>
+      {{end}}
+      {{range .Connections}}
+      <tr class="border-b border-slate-900">
+        <td class="py-2 pr-3 font-medium">{{.Username}}</td>
+        <td class="py-2 pr-3 text-slate-300">{{.Endpoint}}</td>
+        <td class="py-2 pr-3 text-slate-300">{{.LastHandshake}}</td>
+        <td class="py-2 pr-3 text-slate-300">{{humanBytes .RxRate}}/s</td>
+        <td class="py-2 pr-3 text-slate-300">{{humanBytes .TxRate}}/s</td>
+        <td class="py-2 pr-3 text-slate-300">{{.ConnectedAt}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+

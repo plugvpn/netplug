@@ -1,0 +1,13 @@
+{{define "partials/setup_keys.tmpl"}}
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  <div>
+    <label class="block text-xs text-slate-400 mb-1">Server private key</label>
+    <input name="private_key" value="{{.PrivateKey}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 font-mono text-xs" />
+  </div>
+  <div>
+    <label class="block text-xs text-slate-400 mb-1">Server public key</label>
+    <input name="public_key" value="{{.PublicKey}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 font-mono text-xs" readonly />
+  </div>
+</div>
+{{end}}
+

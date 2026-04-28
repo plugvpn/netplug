@@ -1,0 +1,19 @@
+{{define "nav.tmpl"}}
+<div class="flex items-center justify-between mb-6">
+  <div class="flex items-center gap-3">
+    <div class="font-semibold tracking-wide">NetPlug</div>
+    <div class="text-slate-400 text-sm">Go + HTMX</div>
+  </div>
+  <div class="flex items-center gap-4 text-sm">
+    <a class="text-slate-300 hover:text-white" href="/dashboard">Dashboard</a>
+    <a class="text-slate-300 hover:text-white" href="/dashboard/users">Users</a>
+    <a class="text-slate-300 hover:text-white" href="/dashboard/connections">Connections</a>
+    <a class="text-slate-300 hover:text-white" href="/dashboard/servers">Servers</a>
+    <a class="text-slate-300 hover:text-white" href="/dashboard/config">Config</a>
+    <form method="post" action="/logout">
+      <button class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700">Logout</button>
+    </form>
+  </div>
+</div>
+{{end}}
+

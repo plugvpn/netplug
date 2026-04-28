@@ -1,0 +1,235 @@
+{{define "partials/add_user_modal.tmpl"}}
+<div class="fixed inset-0 z-50 flex items-center justify-center">
+  <div
+    class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+    hx-get="/partials/empty"
+    hx-target="#modal-root"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div class="relative w-full max-w-md rounded-xl border border-gray-800 bg-gray-900 shadow-2xl max-h-[calc(100vh-3rem)] overflow-hidden">
+    <div class="flex items-start justify-between border-b border-gray-800 px-6 py-4">
+      <div>
+        <div class="text-sm font-semibold text-gray-100">Add New User</div>
+        <div class="text-xs text-gray-400">Create a new VPN user account</div>
+      </div>
+      <button
+        class="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+        type="button"
+      >
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+
+    <form method="post" action="/dashboard/users" class="px-6 py-4 space-y-4 overflow-y-auto" style="max-height: calc(100vh - 11rem);">
+      <div>
+        <label class="block text-xs font-medium text-gray-300 mb-2">Username *</label>
+        <div class="flex items-center gap-2">
+          <div class="flex h-9 w-9 items-center justify-center rounded border border-gray-700 bg-gray-800 text-gray-400">
+            <i data-lucide="user" class="h-4 w-4" style="stroke-width:1.5"></i>
+          </div>
+          <input
+            name="username"
+            placeholder="john_doe"
+            class="flex-1 h-9 rounded border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            required
+          />
+        </div>
+        <div class="mt-2 text-[11px] text-gray-500">
+          Must be unique. Changing username updates this peer everywhere in the dashboard.
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-xs font-medium text-gray-300">Private Key *</label>
+          <button type="button" onclick="modalGenerateKeys()" class="inline-flex items-center gap-1 rounded bg-emerald-600/20 px-2.5 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-600/30">
+            <i data-lucide="key-round" class="h-3.5 w-3.5" style="stroke-width:1.5"></i>
+            Generate Keys
+          </button>
+        </div>
+        <div class="relative">
+          <input id="modal_private_key" name="private_key" type="password" class="w-full h-9 rounded border border-gray-700 bg-gray-950 px-3 pr-20 font-mono text-[11px] text-gray-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600" />
+          <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            <button type="button" onclick="modalTogglePk()" class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200">
+              <i data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
+            </button>
+            <button type="button" onclick="modalCopy('modal_private_key')" class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200">
+              <i data-lucide="copy" class="h-4 w-4" style="stroke-width:1.5"></i>
+            </button>
+          </div>
+        </div>
+        <div class="mt-1 text-[11px] text-gray-500">WireGuard private key (auto-generated or manually entered)</div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-300 mb-2">Public Key *</label>
+        <input id="modal_public_key" name="public_key" readonly class="w-full h-9 rounded border border-gray-700 bg-gray-900 px-3 font-mono text-[11px] text-gray-300" />
+        <div class="mt-1 text-[11px] text-gray-500">Automatically derived from the private key</div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-xs font-medium text-gray-300">Preshared Key (Optional)</label>
+          <button type="button" onclick="modalGeneratePSK()" class="inline-flex items-center gap-1 rounded bg-purple-600/20 px-2.5 py-1 text-[11px] font-medium text-purple-300 hover:bg-purple-600/30">
+            <i data-lucide="sparkles" class="h-3.5 w-3.5" style="stroke-width:1.5"></i>
+            Generate PSK
+          </button>
+        </div>
+        <div class="relative">
+          <input id="modal_psk" name="preshared_key" placeholder="Optional: enhance security with PSK" class="w-full h-9 rounded border border-gray-700 bg-gray-950 px-3 pr-10 font-mono text-[11px] text-gray-100 placeholder:text-gray-600 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+          <button type="button" onclick="modalCopy('modal_psk')" class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200">
+            <i data-lucide="copy" class="h-4 w-4" style="stroke-width:1.5"></i>
+          </button>
+        </div>
+        <div class="mt-1 text-[11px] text-gray-500">Optional: Adds an extra layer of symmetric encryption for post-quantum security</div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-300 mb-2">VPN IP Address *</label>
+        <input id="modal_vpn_ip" name="vpn_ip" value="{{.NextIP}}" class="w-full h-9 rounded border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600" />
+        <div class="mt-1 text-[11px] text-gray-500">Suggested next available IP. You can modify it if needed.</div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-300 mb-2">Allowed IPs</label>
+        <input
+          id="modal_allowed_extra"
+          name="allowed_ips_extra"
+          placeholder="192.168.0.0/16, 10.0.0.0/8, 0.0.0.0/0, ::/0"
+          class="w-full h-9 rounded border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+        />
+        <div class="mt-1 text-[11px] text-gray-500">
+          Optional extra prefixes for this peer's AllowedIPs line in wg0.conf (after the tunnel IP above). Comma-separated CIDRs.
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-300 mb-2">Remaining Days (Optional)</label>
+        <input
+          name="remaining_days"
+          placeholder="Leave empty for unlimited"
+          class="w-full h-9 rounded border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 placeholder:text-gray-600 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+        />
+        <div class="mt-1 text-[11px] text-gray-500">Number of days until account expires</div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-300 mb-2">Remaining Traffic (MB, Optional)</label>
+        <input
+          name="remaining_traffic_mb"
+          type="number"
+          min="0"
+          placeholder="Leave empty for unlimited"
+          class="w-full h-9 rounded border border-gray-700 bg-gray-950 px-3 text-sm text-gray-100 placeholder:text-gray-600 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+        />
+        <div class="mt-1 text-[11px] text-gray-500">Maximum data transfer limit in megabytes</div>
+      </div>
+
+      <div class="rounded-lg border border-gray-800 bg-gray-900 px-4 py-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-medium text-gray-100">User Status</div>
+            <div class="text-xs text-gray-400">Enable or disable this user</div>
+          </div>
+          <label class="relative inline-flex cursor-pointer items-center">
+            <input name="is_enabled" type="checkbox" class="peer sr-only" checked />
+            <div class="peer h-6 w-11 rounded-full bg-gray-700 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-full"></div>
+          </label>
+        </div>
+      </div>
+
+      <div class="pt-2 flex items-center gap-3">
+        <button
+          type="button"
+          class="flex-1 h-9 rounded border border-gray-700 bg-gray-900 text-sm text-gray-200 hover:bg-gray-800"
+          hx-get="/partials/empty"
+          hx-target="#modal-root"
+          hx-swap="innerHTML"
+        >
+          Cancel
+        </button>
+        <button class="flex-1 h-9 rounded bg-emerald-600 text-sm font-medium text-white hover:bg-emerald-500">
+          Create User
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    // Ensure icons render in injected modal.
+    try { lucide.createIcons(); } catch (e) {}
+
+    const pk = document.getElementById('modal_private_key');
+    let t = null;
+    if (pk) {
+      pk.addEventListener('input', function () {
+        if (t) clearTimeout(t);
+        t = setTimeout(modalDerivePublicKey, 400);
+      });
+    }
+    // Pre-fill keys + psk if empty.
+    setTimeout(async function() {
+      const pub = document.getElementById('modal_public_key');
+      if (pub && !pub.value) {
+        await modalGenerateKeys();
+      }
+    }, 0);
+  })();
+
+  async function modalGenerateKeys() {
+    const res = await fetch('/api/users/generate-keys', { method: 'POST', credentials: 'same-origin' });
+    if (!res.ok) return;
+    const j = await res.json();
+    document.getElementById('modal_private_key').value = j.privateKey || '';
+    document.getElementById('modal_public_key').value = j.publicKey || '';
+    try { lucide.createIcons(); } catch(e) {}
+  }
+
+  async function modalDerivePublicKey() {
+    const priv = document.getElementById('modal_private_key').value || '';
+    if (!priv) {
+      document.getElementById('modal_public_key').value = '';
+      return;
+    }
+    const res = await fetch('/api/users/derive-public-key', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ privateKey: priv })
+    });
+    if (!res.ok) {
+      document.getElementById('modal_public_key').value = '';
+      return;
+    }
+    const j = await res.json();
+    document.getElementById('modal_public_key').value = j.publicKey || '';
+  }
+
+  async function modalGeneratePSK() {
+    const res = await fetch('/api/users/generate-psk', { method: 'POST', credentials: 'same-origin' });
+    if (!res.ok) return;
+    const j = await res.json();
+    document.getElementById('modal_psk').value = j.presharedKey || '';
+    try { lucide.createIcons(); } catch(e) {}
+  }
+
+  function modalCopy(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    navigator.clipboard.writeText(el.value || '').catch(function(){});
+  }
+
+  function modalTogglePk() {
+    const el = document.getElementById('modal_private_key');
+    if (!el) return;
+    el.type = (el.type === 'password') ? 'text' : 'password';
+  }
+</script>
+{{end}}
+

@@ -1,0 +1,205 @@
+{{define "users.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "users.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">VPN Users</h2>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Manage VPN user accounts and their access to WireGuard servers</p>
+        </div>
+        <button
+          class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600"
+          hx-get="/partials/users/add-modal"
+          hx-target="#modal-root"
+          hx-swap="innerHTML"
+          type="button"
+        >
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          Add User
+        </button>
+      </div>
+
+      {{if .Users}}
+      <div class="mb-6">
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+          <input
+            id="users-search"
+            type="text"
+            placeholder="Search by username or IP address..."
+            class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+        </div>
+      </div>
+      {{end}}
+
+      <div class="overflow-hidden rounded-lg border border-gray-700" style="background-color:#030712;">
+        <div class="border-b border-gray-800 bg-gradient-to-r from-gray-800 to-gray-900 p-6">
+          <h3 class="text-base font-normal text-white">All Users ({{len .Users}})</h3>
+        </div>
+        <style>
+          /* Avoid Tailwind arbitrary colors in class names (CDN/JIT quirks) */
+          tr.users-row:nth-child(odd) { background-color: #030712; }
+          tr.users-row:nth-child(even) { background-color: #111827; }
+        </style>
+        <div class="overflow-x-auto" style="background-color:#030712; scrollbar-width:thin; scrollbar-color:#374151 #030712;">
+          <table class="w-full" style="background-color:#030712;">
+            <thead style="background-color:#1f2937;">
+              <tr class="border-b border-gray-700 text-left text-sm font-medium text-gray-300 dark:text-gray-400">
+                <th class="px-6 py-3">Username</th>
+                <th class="px-6 py-3">IP Address</th>
+                <th class="px-6 py-3">Status</th>
+                <th class="px-8 py-3">Total Usage</th>
+                <th class="px-6 py-3">Remaining Days</th>
+                <th class="px-6 py-3">Remaining Traffic</th>
+                <th class="px-6 py-3">Connection</th>
+                <th class="px-6 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-800" style="background-color:#030712;">
+              {{if not .Users}}
+              <tr>
+                <td class="px-6 py-6 text-sm text-gray-500 dark:text-gray-500" colspan="8">No users found.</td>
+              </tr>
+              {{end}}
+              {{range $i, $u := .Users}}
+              <tr
+                class="users-row transition-colors hover:bg-emerald-900/20"
+                data-username="{{$u.Username}}"
+                data-ip="{{$u.IPAddress}}"
+              >
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 dark:bg-gray-800">
+                      <i data-lucide="user" class="h-5 w-5 text-gray-300 dark:text-gray-400"></i>
+                    </div>
+                    <div>
+                      <p class="font-medium text-gray-100 dark:text-gray-100">{{$u.Username}}</p>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  {{if $u.IPAddress}}
+                    <span class="font-mono text-sm font-medium text-emerald-400 dark:text-emerald-400">{{$u.IPAddress}}</span>
+                  {{else}}
+                    <span class="text-sm text-gray-500 dark:text-gray-500">Not assigned</span>
+                  {{end}}
+                </td>
+                <td class="px-6 py-4">
+                  <form method="post" action="/dashboard/users/{{$u.ID}}/toggle">
+                    <button
+                      type="submit"
+                      class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-all {{if $u.IsEnabled}}border-emerald-700 bg-emerald-950 text-emerald-400 hover:bg-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400{{else}}border-gray-600 bg-gray-800 text-gray-400 hover:bg-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400{{end}}"
+                      title="Toggle enabled"
+                    >
+                      <span class="h-1.5 w-1.5 rounded-full {{if $u.IsEnabled}}bg-emerald-500{{else}}bg-gray-400{{end}}"></span>
+                      {{if $u.IsEnabled}}Enabled{{else}}Disabled{{end}}
+                    </button>
+                  </form>
+                </td>
+                <td class="px-8 py-4">
+                  <div class="text-sm text-gray-300 dark:text-gray-400">
+                    <div>↑ {{humanBytes $u.TotalRxBytes}}</div>
+                    <div>↓ {{humanBytes $u.TotalTxBytes}}</div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="text-sm text-gray-200 dark:text-gray-200">
+                    {{if $u.HasRemainingDays}}{{printf "%d days" $u.RemainingDaysValue}}{{else}}∞{{end}}
+                  </span>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="text-sm text-gray-200 dark:text-gray-200">
+                    {{if $u.HasRemainingTraffic}}{{humanBytes $u.RemainingTrafficBytes}}{{else}}∞{{end}}
+                  </span>
+                </td>
+                <td class="px-6 py-4">
+                  {{if $u.IsConnected}}
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="activity" class="h-4 w-4 text-emerald-400 dark:text-emerald-400"></i>
+                      <div>
+                        <p class="text-sm font-medium text-gray-200 dark:text-gray-200">Connected</p>
+                        {{if $u.Endpoint}}
+                          <p class="text-xs text-gray-500 dark:text-gray-500 font-mono">{{$u.Endpoint}}</p>
+                        {{end}}
+                      </div>
+                    </div>
+                  {{else}}
+                    <span class="text-sm text-gray-500 dark:text-gray-500">Never</span>
+                  {{end}}
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      class="rounded-md border border-emerald-700 p-2 text-emerald-400 transition-colors hover:bg-emerald-950 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                      title="Show QR code"
+                      hx-get="/partials/users/{{$u.ID}}/qr-modal"
+                      hx-target="#modal-root"
+                      hx-swap="innerHTML"
+                    >
+                      <i data-lucide="qr-code" class="h-4 w-4"></i>
+                    </button>
+                    <button
+                      class="rounded-md border border-gray-600 p-2 text-gray-300 transition-colors hover:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+                      title="Edit user"
+                      type="button"
+                      hx-get="/partials/users/{{$u.ID}}/edit-modal"
+                      hx-target="#modal-root"
+                      hx-swap="innerHTML"
+                    >
+                      <i data-lucide="edit-3" class="h-4 w-4"></i>
+                    </button>
+                    <button
+                      class="rounded-md border border-red-700 p-2 text-red-400 transition-colors hover:bg-red-950 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                      title="Delete user"
+                      type="button"
+                      hx-get="/partials/users/{{$u.ID}}/delete-modal"
+                      hx-target="#modal-root"
+                      hx-swap="innerHTML"
+                    >
+                      <i data-lucide="trash-2" class="h-4 w-4"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="modal-root"></div>
+</div>
+
+<script>
+  (function () {
+    const input = document.getElementById('users-search');
+    if (!input) return;
+
+    function norm(s) {
+      return (s || '').toString().toLowerCase().trim();
+    }
+
+    input.addEventListener('input', function () {
+      const q = norm(input.value);
+      const rows = document.querySelectorAll('tr.users-row');
+      rows.forEach(function (row) {
+        const u = norm(row.getAttribute('data-username'));
+        const ip = norm(row.getAttribute('data-ip'));
+        const ok = !q || u.includes(q) || ip.includes(q);
+        row.style.display = ok ? '' : 'none';
+      });
+    });
+  })();
+</script>
+{{end}}
+
+{{define "users.header_right"}}{{end}}
+

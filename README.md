@@ -1,6 +1,6 @@
-# NetPlug VPN Dashboard
+## NetPlug (Go + HTMX)
 
-An open-source, free alternative to commercial VPN management dashboards. Built with Next.js 16, TypeScript, and Tailwind CSS.
+This project has been rewritten to **Go + HTMX** with SQLite and a background WireGuard sync loop.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-16.1-black)
@@ -21,72 +21,25 @@ An open-source, free alternative to commercial VPN management dashboards. Built 
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
 - **Performance Optimized**: Fast database queries, no command spam
 
-## 🛠️ Tech Stack
+## Run
 
-- **Framework**: Next.js 16.1 with App Router
-- **Language**: TypeScript
-- **Database**: SQLite with Prisma ORM
-- **Authentication**: NextAuth.js v5
-- **Styling**: Tailwind CSS 4
-- **Charts**: Recharts
-- **Icons**: Lucide React
-- **Date Handling**: date-fns
-
-## 📋 Prerequisites
-
-- Node.js 20+
-- npm or yarn
-- A VPN server (WireGuard)
-
-No external database required - uses SQLite for lightweight storage!
-
-## 🚀 Getting Started
-
-### Installation
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/netplug-dashboard.git
-cd netplug-dashboard
+go run ./cmd/netplug
 ```
 
-2. Install dependencies:
+Open `http://localhost:8080/setup`.
+
+## Docker
+
 ```bash
-npm install
+docker compose up --build
 ```
 
-3. Set up environment variables:
-```bash
-# Copy the example file
-cp .env.example .env
+## Notes
 
-# Generate a secure AUTH_SECRET
-openssl rand -base64 32
-
-# Edit .env and replace AUTH_SECRET with the generated value
-```
-
-4. Run database migrations (creates SQLite database automatically):
-```bash
-npx prisma migrate dev --name init
-```
-
-5. Run the development server:
-```bash
-npm run dev
-```
-
-   **Important for WireGuard**: If you're using WireGuard, the dashboard needs elevated privileges to read interface statistics. Run with sudo:
-   ```bash
-   sudo npm run dev
-   ```
-   See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for more details.
-
-6. Open [http://localhost:3000](http://localhost:3000) in your browser
-   - You'll be automatically redirected to the setup wizard on first launch
-   - Follow the 2-step setup process:
-     1. Create your admin account
-     2. Configure your VPN server(s) (WireGuard)
+- SQLite DB default path: `./sandbox/data/netplug.sqlite`
+- WireGuard config path: `./sandbox/data/wg0.conf`
+- WireGuard tools (`wg`, `wg-quick`) are optional unless you want the app to apply config / sync live stats.
 
 ### Building for Production
 

@@ -1,0 +1,285 @@
+{{define "wireguard.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "wireguard.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Wireguard</h2>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Configure and manage your WireGuard VPN server settings
+        </p>
+      </div>
+
+      {{if .LoadError}}
+        <div class="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900 dark:bg-yellow-950">
+          <p class="text-sm text-yellow-800 dark:text-yellow-200">{{.LoadError}}</p>
+        </div>
+      {{else}}
+
+      <div class="space-y-6">
+        <div class="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
+            <div>
+              <div class="mb-6 flex items-center gap-2">
+                <i data-lucide="server" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Server Status</h3>
+              </div>
+
+              {{if .WGServer}}
+              <div class="space-y-4">
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Server Name</span>
+                  <span class="min-w-0 text-right text-sm font-medium text-gray-900 dark:text-gray-100">{{.WGServer.Name}}</span>
+                </div>
+
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Interface status</span>
+                  <div class="flex min-w-0 flex-col items-end gap-0.5 text-right">
+                    <div class="flex items-center gap-2">
+                      <div class="h-2 w-2 rounded-full {{if .WGLive.Up}}bg-green-500{{else}}bg-red-500{{end}}"></div>
+                      <span class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {{if .WGLive.Up}}Running{{else}}Not running{{end}}
+                      </span>
+                    </div>
+                    {{if and .WGLive.Up .WGLive.InterfaceName}}
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                      {{.WGLive.InterfaceName}}{{if .WGLive.ListenPort}} · listen {{.WGLive.ListenPort}}{{end}}
+                    </span>
+                    {{end}}
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Uptime</span>
+                  <div class="flex min-w-0 flex-col items-end gap-0.5 text-right">
+                    <span class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {{if .TunnelUptimeSeconds}}{{humanUptime (durationSeconds .TunnelUptimeSeconds)}}{{else}}{{humanUptime (durationSeconds .HostUptimeSeconds)}}{{end}}
+                    </span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                      {{if .TunnelUptimeSeconds}}WireGuard tunnel{{else}}This system{{end}}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Config Path</span>
+                  <span class="min-w-0 break-all text-right font-mono text-sm text-gray-900 dark:text-gray-100">{{.WGServer.ConfigPath}}</span>
+                </div>
+              </div>
+              {{else}}
+                <p class="text-sm text-gray-500 dark:text-gray-400">Server record not loaded. Refresh or check the database.</p>
+              {{end}}
+            </div>
+
+            <div class="space-y-1.5 lg:border-l lg:border-gray-200 lg:pl-10 dark:lg:border-gray-700">
+              <div class="mb-6 flex items-center gap-2">
+                <i data-lucide="key-round" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Keys</h3>
+              </div>
+
+              <form id="wg-form" method="post" action="/dashboard/wireguard/save">
+                <div>
+                  <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Server Private Key</span>
+                  <div class="relative">
+                    <input
+                      id="server_private_key"
+                      name="server_private_key"
+                      type="password"
+                      value="{{if .WGServer}}{{if .WGServer.PrivateKey}}{{.WGServer.PrivateKey}}{{end}}{{end}}"
+                      spellcheck="false"
+                      autocomplete="off"
+                      class="w-full rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-[4.25rem] font-mono text-xs text-gray-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                      placeholder="WireGuard interface private key"
+                    />
+                    <div class="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                      <button type="button" onclick="togglePk()" class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+                        <i id="pk-eye" data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
+                      </button>
+                      <button type="button" onclick="copyText('server_private_key')" class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+                        <i data-lucide="copy" class="h-4 w-4" style="stroke-width:1.5"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Hidden by default. The public key is derived when you save.</p>
+                </div>
+
+                <div class="mt-8 border-t border-gray-200 pt-8 dark:border-gray-700">
+                  <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Server Public Key</span>
+                  {{if and .WGServer .WGServer.PublicKey}}
+                    <div class="relative">
+                      <input type="text" readonly value="{{.WGServer.PublicKey}}" class="w-full cursor-text rounded-lg border border-gray-200 bg-gray-50 py-2 pl-3 pr-10 font-mono text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
+                      <button type="button" onclick="copyValue(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200/80 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200">
+                        <i data-lucide="copy" class="h-4 w-4" style="stroke-width:1.5"></i>
+                      </button>
+                    </div>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Share this public key with clients connecting to this server</p>
+                  {{else}}
+                    <div class="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900 dark:bg-yellow-950">
+                      <p class="text-sm text-yellow-800 dark:text-yellow-200">Public key not available. Re-run setup or check the database.</p>
+                    </div>
+                  {{end}}
+                </div>
+
+                <!-- Hidden fields filled from main form below -->
+                <input type="hidden" name="server_host" id="server_host_h" />
+                <input type="hidden" name="server_port" id="server_port_h" />
+                <input type="hidden" name="server_address" id="server_address_h" />
+                <input type="hidden" name="client_address_range" id="client_address_range_h" />
+                <input type="hidden" name="dns" id="dns_h" />
+                <input type="hidden" name="mtu" id="mtu_h" />
+                <input type="hidden" name="persistent_keepalive" id="persistent_keepalive_h" />
+                <input type="hidden" name="allowed_ips" id="allowed_ips_h" />
+                <input type="hidden" name="pre_up" id="pre_up_h" />
+                <input type="hidden" name="post_up" id="post_up_h" />
+                <input type="hidden" name="pre_down" id="pre_down_h" />
+                <input type="hidden" name="post_down" id="post_down_h" />
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
+            <div>
+              <div class="mb-6 flex items-center gap-2">
+                <i data-lucide="settings" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Server Settings</h3>
+              </div>
+              <div class="space-y-0">
+                {{template "wg_input.tmpl" dict "Label" "Server Host" "ID" "server_host" "Value" .WGConfig.ServerHost "Placeholder" "e.g., vpn.example.com or 192.168.1.1" }}
+                {{template "wg_input.tmpl" dict "Label" "Server Port" "ID" "server_port" "Value" .WGConfig.ServerPort "Type" "number" "Placeholder" "e.g., 51820" }}
+                {{template "wg_input.tmpl" dict "Label" "Server Address" "ID" "server_address" "Value" .WGConfig.ServerAddress "Placeholder" "e.g., 10.0.0.1/24" }}
+                {{template "wg_input.tmpl" dict "Label" "Client Address Range" "ID" "client_address_range" "Value" .WGConfig.ClientAddressRange "Placeholder" "e.g., 10.0.0.0/24" }}
+              </div>
+            </div>
+
+            <div class="lg:border-l lg:border-gray-200 lg:pl-10 dark:lg:border-gray-700">
+              <div class="mb-6 flex items-center gap-2">
+                <i data-lucide="globe" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Network Settings</h3>
+              </div>
+              <div class="space-y-0">
+                {{template "wg_input.tmpl" dict "Label" "DNS Servers" "ID" "dns" "Value" .WGConfig.DNS "Placeholder" "e.g., 1.1.1.1, 8.8.8.8" }}
+                {{template "wg_input.tmpl" dict "Label" "MTU" "ID" "mtu" "Value" .WGConfig.MTU "Type" "number" "Placeholder" "e.g., 1420" }}
+                {{template "wg_input.tmpl" dict "Label" "Persistent Keepalive (seconds)" "ID" "persistent_keepalive" "Value" .WGConfig.PersistentKeepalive "Type" "number" "Placeholder" "e.g., 25" }}
+                {{template "wg_input.tmpl" dict "Label" "Allowed IPs" "ID" "allowed_ips" "Value" .WGConfig.AllowedIPs "Placeholder" "e.g., 0.0.0.0/0, ::/0" }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div class="mb-6 flex items-center gap-3">
+            <i data-lucide="sliders-horizontal" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Advanced Settings</h3>
+          </div>
+          <div class="space-y-0">
+            {{template "wg_textarea.tmpl" dict "Label" "PreUp" "ID" "pre_up" "Value" .WGConfig.PreUp "Placeholder" "Commands to run before interface is brought up (optional)" }}
+            {{template "wg_textarea.tmpl" dict "Label" "PostUp" "ID" "post_up" "Value" .WGConfig.PostUp "Placeholder" "Commands to run after interface is up (optional)" }}
+            {{template "wg_textarea.tmpl" dict "Label" "PreDown" "ID" "pre_down" "Value" .WGConfig.PreDown "Placeholder" "Commands to run before interface is taken down (optional)" }}
+            {{template "wg_textarea.tmpl" dict "Label" "PostDown" "ID" "post_down" "Value" .WGConfig.PostDown "Placeholder" "Commands to run after interface is down (optional)" }}
+          </div>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+
+  <div class="border-t border-gray-200 bg-white px-8 py-4 dark:border-gray-800 dark:bg-gray-900">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <button id="saveBtn" onclick="submitWireguard()" class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600 disabled:cursor-not-allowed disabled:opacity-50">
+          <i data-lucide="save" class="h-4 w-4"></i>
+          Save Changes
+        </button>
+        <button id="resetBtn" onclick="window.location.reload()" class="flex items-center gap-2 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+          <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+          Reset
+        </button>
+        <form method="post" action="/dashboard/wireguard/reload">
+          <button class="flex items-center gap-2 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+            <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+            Reload
+          </button>
+        </form>
+      </div>
+      {{if .SaveMessage}}
+        <div class="text-sm font-medium {{if eq .SaveMessageType "success"}}text-emerald-600 dark:text-emerald-500{{else}}text-red-600 dark:text-red-500{{end}}">
+          {{.SaveMessage}}
+        </div>
+      {{end}}
+    </div>
+  </div>
+</div>
+
+<script>
+  function copyText(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    navigator.clipboard.writeText(el.value || '').catch(function(){});
+  }
+  function copyValue(btn) {
+    var input = btn && btn.parentElement ? btn.parentElement.querySelector('input') : null;
+    if (input) navigator.clipboard.writeText(input.value || '').catch(function(){});
+  }
+  function togglePk() {
+    var el = document.getElementById('server_private_key');
+    if (!el) return;
+    el.type = (el.type === 'password') ? 'text' : 'password';
+  }
+  function setHidden(srcId, hiddenId) {
+    var src = document.getElementById(srcId);
+    var dst = document.getElementById(hiddenId);
+    if (src && dst) dst.value = src.value || '';
+  }
+  function submitWireguard() {
+    // Copy all visible inputs into the hidden fields inside the keys form.
+    setHidden('server_host', 'server_host_h');
+    setHidden('server_port', 'server_port_h');
+    setHidden('server_address', 'server_address_h');
+    setHidden('client_address_range', 'client_address_range_h');
+    setHidden('dns', 'dns_h');
+    setHidden('mtu', 'mtu_h');
+    setHidden('persistent_keepalive', 'persistent_keepalive_h');
+    setHidden('allowed_ips', 'allowed_ips_h');
+    setHidden('pre_up', 'pre_up_h');
+    setHidden('post_up', 'post_up_h');
+    setHidden('pre_down', 'pre_down_h');
+    setHidden('post_down', 'post_down_h');
+
+    var form = document.getElementById('wg-form');
+    if (form) form.submit();
+  }
+</script>
+{{end}}
+
+{{define "wireguard.header_right"}}{{end}}
+
+{{define "wg_input.tmpl"}}
+<div class="border-b border-gray-100 py-4 last:border-b-0 dark:border-gray-800">
+  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{.Label}}</label>
+  <input
+    id="{{.ID}}"
+    type="{{if .Type}}{{.Type}}{{else}}text{{end}}"
+    value="{{.Value}}"
+    placeholder="{{.Placeholder}}"
+    class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-emerald-600"
+  />
+</div>
+{{end}}
+
+{{define "wg_textarea.tmpl"}}
+<div class="border-b border-gray-100 py-4 last:border-b-0 dark:border-gray-800">
+  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{.Label}}</label>
+  <textarea
+    id="{{.ID}}"
+    rows="2"
+    class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-emerald-600"
+    placeholder="{{.Placeholder}}"
+  >{{.Value}}</textarea>
+</div>
+{{end}}
