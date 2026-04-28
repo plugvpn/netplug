@@ -97,7 +97,7 @@
     var textEl = document.getElementById('np-conf-text');
     var confText = textEl ? (textEl.textContent || '') : '';
     var canvas = document.getElementById('np-qr-canvas');
-    var QR = (window.QRCode && window.QRCode.toCanvas) ? window.QRCode : ((window.qrcode && window.qrcode.toCanvas) ? window.qrcode : null);
+    var QR = (window.QRCode && window.QRCode.toCanvas) ? window.QRCode : null;
     if (canvas && QR && confText) {
       try {
         QR.toCanvas(canvas, confText, { width: 256, margin: 1 }, function () {});

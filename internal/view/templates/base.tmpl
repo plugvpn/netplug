@@ -9,7 +9,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@0.563.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <!-- qrcode@1.5.4 has no plain-browser UMD bundle on jsDelivr; use jsDelivr +esm to avoid require() -->
+    <script type="module">
+      import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm';
+      window.QRCode = QRCode;
+    </script>
     <style>
       /* From original globals.css (scrollbars + base) */
       * { scrollbar-width: thin; scrollbar-color: #374151 #1f2937; }
