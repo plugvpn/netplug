@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net"
+	"path/filepath"
 	"os"
 	"runtime"
 	"strconv"
@@ -24,6 +27,8 @@ import (
 type Handlers struct {
 	svc *Services
 }
+
+const maxSetupUploadBytes = 10 << 20 // 10MB
 
 func NewHandlers(svc *Services) *Handlers {
 	return &Handlers{svc: svc}
@@ -262,6 +267,300 @@ func (h *Handlers) SetupWireGuardPost(w http.ResponseWriter, r *http.Request) {
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
+}
+
+func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Request) {
+	if h.isSetupComplete() {
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		return
+	}
+	if h.svc.Sessions.GetString(r.Context(), "user_id") == "" {
+		http.Redirect(w, r, "/setup", http.StatusFound)
+		return
+	}
+
+	// Multipart upload for wg0.conf + optional scripts.
+	r.Body = http.MaxBytesReader(w, r.Body, maxSetupUploadBytes)
+	if err := r.ParseMultipartForm(maxSetupUploadBytes); err != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":    "Setup",
+			"HasAdmin": true,
+			"Error":    "Invalid upload (file too large or malformed).",
+		})
+		return
+	}
+
+	serverHost := strings.TrimSpace(r.FormValue("server_host"))
+	if serverHost == "" {
+		serverHost = "vpn.example.com"
+	}
+
+	wgFile, _, err := r.FormFile("wg0_conf")
+	if err != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":    "Setup",
+			"HasAdmin": true,
+			"Error":    "wg0.conf file is required for import.",
+		})
+		return
+	}
+	defer wgFile.Close()
+
+	parsed, err := wireguard.ParseWGQuickConfig(wgFile)
+	if err != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":    "Setup",
+			"HasAdmin": true,
+			"Error":    err.Error(),
+		})
+		return
+	}
+
+	// Save optional hook scripts and convert to absolute paths.
+	dataDir := h.svc.Config.DataDir
+	scriptPaths, err := saveWGHookScripts(dataDir, r)
+	if err != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":    "Setup",
+			"HasAdmin": true,
+			"Error":    err.Error(),
+		})
+		return
+	}
+
+	// Build WireGuard config JSON from imported interface.
+	serverPort := parsed.Interface.ListenPort
+	if serverPort == 0 {
+		serverPort = 51820
+	}
+	serverAddr := strings.TrimSpace(parsed.Interface.Address)
+	if serverAddr == "" {
+		serverAddr = "10.8.0.1/24"
+	}
+	clientRange := deriveClientRange(serverAddr)
+	if clientRange == "" {
+		clientRange = "10.8.0.0/24"
+	}
+
+	privateKey := strings.TrimSpace(parsed.Interface.PrivateKey)
+	publicKey, err := wireguard.DerivePublicKey(privateKey)
+	if err != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":    "Setup",
+			"HasAdmin": true,
+			"Error":    "Invalid server private key in wg0.conf.",
+		})
+		return
+	}
+
+	preUp := firstNonEmpty(scriptPaths.PreUp, parsed.Interface.PreUp)
+	postUp := firstNonEmpty(scriptPaths.PostUp, parsed.Interface.PostUp)
+	preDown := firstNonEmpty(scriptPaths.PreDown, parsed.Interface.PreDown)
+	postDown := firstNonEmpty(scriptPaths.PostDown, parsed.Interface.PostDown)
+
+	dns := strings.TrimSpace(parsed.Interface.DNS)
+	if dns == "" {
+		dns = "1.1.1.1, 1.0.0.1"
+	}
+	mtu := parsed.Interface.MTU
+	if mtu == 0 {
+		mtu = 1420
+	}
+
+	// Keep existing project defaults for client settings when importing.
+	const defaultPersistentKeepalive = 25
+	const defaultAllowedIPs = "0.0.0.0/0, ::/0"
+
+	vpnCfg := map[string]any{
+		"wireGuard": map[string]any{
+			"enabled":             true,
+			"serverHost":          serverHost,
+			"serverPort":          serverPort,
+			"serverAddress":       serverAddr,
+			"clientAddressRange":  clientRange,
+			"dns":                 dns,
+			"mtu":                 mtu,
+			"persistentKeepalive": defaultPersistentKeepalive,
+			"allowedIps":          defaultAllowedIPs,
+			"preUp":               preUp,
+			"postUp":              postUp,
+			"preDown":             preDown,
+			"postDown":            postDown,
+		},
+	}
+
+	if err := db.UpsertSystemConfig(h.svc.DB, true, vpnCfg); err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := wireguard.UpsertWireGuardServer(h.svc.DB, dataDir, wireguard.SetupConfig{
+		ServerHost:          serverHost,
+		ServerPort:          serverPort,
+		ServerAddress:       serverAddr,
+		ClientAddressRange:  clientRange,
+		DNS:                 dns,
+		MTU:                 mtu,
+		PersistentKeepalive: defaultPersistentKeepalive,
+		AllowedIPs:          defaultAllowedIPs,
+		PreUp:               preUp,
+		PostUp:              postUp,
+		PreDown:             preDown,
+		PostDown:            postDown,
+		PrivateKey:          privateKey,
+		PublicKey:           publicKey,
+	}); err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := importPeersAsUsers(h.svc.DB, parsed.Peers); err != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":    "Setup",
+			"HasAdmin": true,
+			"Error":    err.Error(),
+		})
+		return
+	}
+
+	if err := wireguard.WriteWireGuardConfig(h.svc.DB, dataDir); err != nil {
+		http.Error(w, "failed to write wg0.conf", http.StatusInternalServerError)
+		return
+	}
+	_ = wireguard.ApplyConfig(dataDir, h.svc.Config.WGInterface)
+	http.Redirect(w, r, "/dashboard", http.StatusFound)
+}
+
+type hookScriptPaths struct {
+	PreUp    string
+	PostUp   string
+	PreDown  string
+	PostDown string
+}
+
+func saveWGHookScripts(dataDir string, r *http.Request) (hookScriptPaths, error) {
+	var out hookScriptPaths
+	// Deterministic filenames inside same dir as wg0.conf (requirement).
+	type item struct {
+		Field string
+		Name  string
+		Set   func(string)
+	}
+	items := []item{
+		{Field: "pre_up_script", Name: "wg0-pre-up.sh", Set: func(p string) { out.PreUp = p }},
+		{Field: "post_up_script", Name: "wg0-post-up.sh", Set: func(p string) { out.PostUp = p }},
+		{Field: "pre_down_script", Name: "wg0-pre-down.sh", Set: func(p string) { out.PreDown = p }},
+		{Field: "post_down_script", Name: "wg0-post-down.sh", Set: func(p string) { out.PostDown = p }},
+	}
+
+	for _, it := range items {
+		f, _, err := r.FormFile(it.Field)
+		if err != nil {
+			// no file is fine
+			continue
+		}
+		if err := func() error {
+			defer f.Close()
+			dst := filepath.Join(dataDir, it.Name)
+			b, err := ioReadAllLimited(f, 1024*1024) // 1MB per script
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(dst, b, 0o700); err != nil {
+				return err
+			}
+			it.Set(dst)
+			return nil
+		}(); err != nil {
+			return hookScriptPaths{}, err
+		}
+	}
+	return out, nil
+}
+
+func ioReadAllLimited(r io.Reader, max int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, errors.New("uploaded script is too large")
+	}
+	return b, nil
+}
+
+func deriveClientRange(serverAddr string) string {
+	addr := strings.TrimSpace(serverAddr)
+	// Address may contain multiple entries separated by comma.
+	if i := strings.IndexByte(addr, ','); i >= 0 {
+		addr = strings.TrimSpace(addr[:i])
+	}
+	if addr == "" {
+		return ""
+	}
+	if !strings.Contains(addr, "/") {
+		// Guess /24 for IPv4, /64 for IPv6 if needed.
+		if ip := net.ParseIP(addr); ip != nil && strings.Count(addr, ".") == 3 {
+			addr = addr + "/24"
+		} else if ip != nil && strings.Contains(addr, ":") {
+			addr = addr + "/64"
+		}
+	}
+	_, ipnet, err := net.ParseCIDR(addr)
+	if err != nil || ipnet == nil {
+		return ""
+	}
+	return ipnet.String()
+}
+
+func firstNonEmpty(primary string, fallback string) string {
+	if strings.TrimSpace(primary) != "" {
+		return primary
+	}
+	return fallback
+}
+
+func importPeersAsUsers(sqlDB *sql.DB, peers []wireguard.WGQuickPeer) error {
+	if sqlDB == nil {
+		return errors.New("db is nil")
+	}
+	for _, p := range peers {
+		pub := strings.TrimSpace(p.PublicKey)
+		allowed := strings.TrimSpace(p.AllowedIPs)
+		if pub == "" || allowed == "" {
+			continue
+		}
+
+		username := strings.TrimSpace(p.Username)
+		if username == "" {
+			if ip := wireguard.FirstPeerVPNIP(allowed); ip != "" {
+				username = ip
+			} else {
+				username = pub
+			}
+		}
+
+		id := wireguard.NewID()
+		_, err := sqlDB.Exec(`
+			INSERT INTO vpn_users (
+			  id, username, allowed_ips, endpoint, public_key, preshared_key,
+			  server_id, is_enabled
+			)
+			VALUES (?, ?, ?, ?, ?, ?, 'wireguard', 1)
+			ON CONFLICT(username) DO UPDATE SET
+			  allowed_ips = excluded.allowed_ips,
+			  endpoint = excluded.endpoint,
+			  public_key = excluded.public_key,
+			  preshared_key = excluded.preshared_key,
+			  server_id = 'wireguard',
+			  is_enabled = 1,
+			  updated_at = datetime('now')
+		`, id, username, allowed, nullIfEmpty(p.Endpoint), pub, nullIfEmpty(p.PresharedKey))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func mustAtoi(s string, fallback int) int {
