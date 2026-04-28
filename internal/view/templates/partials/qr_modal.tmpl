@@ -51,14 +51,10 @@
           </div>
           <div class="flex items-center gap-3">
             <span id="np-conf-toggle-label" class="text-sm text-gray-400">Show</span>
-            <button
-              type="button"
-              id="np-conf-toggle"
-              class="relative h-7 w-14 rounded-full bg-gray-600 transition-colors"
-              aria-pressed="false"
-            >
-              <span class="absolute top-1 h-5 w-5 rounded-full bg-white shadow-lg transition-transform translate-x-1"></span>
-            </button>
+            <label class="relative inline-flex cursor-pointer items-center">
+              <input id="np-conf-toggle" type="checkbox" class="peer sr-only" />
+              <div class="peer h-6 w-11 rounded-full bg-gray-700 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-full"></div>
+            </label>
           </div>
         </div>
 
@@ -115,17 +111,13 @@
     var wrap = document.getElementById('np-conf-wrap');
     var lbl = document.getElementById('np-conf-toggle-label');
     if (toggle && wrap) {
-      toggle.addEventListener('click', function () {
-        var on = toggle.getAttribute('aria-pressed') === 'true';
-        var next = !on;
-        toggle.setAttribute('aria-pressed', next ? 'true' : 'false');
+      function apply() {
+        var next = !!toggle.checked;
         wrap.style.display = next ? '' : 'none';
         if (lbl) lbl.textContent = next ? 'Hide' : 'Show';
-        var dot = toggle.querySelector('span');
-        if (dot) dot.style.transform = next ? 'translateX(2rem)' : 'translateX(0.25rem)';
-        toggle.classList.toggle('bg-emerald-600', next);
-        toggle.classList.toggle('bg-gray-600', !next);
-      });
+      }
+      toggle.addEventListener('change', apply);
+      apply();
     }
   })();
 </script>

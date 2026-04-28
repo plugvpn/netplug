@@ -45,7 +45,7 @@ func NextClientAllowedIP(sqlDB *sql.DB) (string, error) {
 	if err != nil {
 		return "", errors.New("invalid client CIDR")
 	}
-	serverIP := net.ParseIP(strings.TrimSpace(vc.WireGuard.ServerAddress)).To4()
+	serverIP := parseServerIPv4(vc.WireGuard.ServerAddress)
 
 	used := map[string]bool{}
 	rows, err := sqlDB.Query(`SELECT allowed_ips FROM vpn_users WHERE server_id='wireguard' AND allowed_ips IS NOT NULL AND allowed_ips <> ''`)
@@ -76,6 +76,30 @@ func NextClientAllowedIP(sqlDB *sql.DB) (string, error) {
 		return fmt.Sprintf("%s/32", ip.String()), nil
 	}
 	return "", errors.New("no available IPs in subnet")
+}
+
+func parseServerIPv4(serverAddress string) net.IP {
+	s := strings.TrimSpace(serverAddress)
+	if s == "" {
+		return nil
+	}
+	// Address may contain multiple entries separated by comma.
+	if i := strings.IndexByte(s, ','); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if s == "" {
+		return nil
+	}
+	// Common form is CIDR (e.g. 10.0.0.1/24).
+	if strings.Contains(s, "/") {
+		ip, _, err := net.ParseCIDR(s)
+		if err == nil {
+			return ip.To4()
+		}
+		// Fall back to stripping the suffix.
+		s = strings.TrimSpace(strings.SplitN(s, "/", 2)[0])
+	}
+	return net.ParseIP(s).To4()
 }
 
 func firstIPv4InAllowedIPs(s string) net.IP {

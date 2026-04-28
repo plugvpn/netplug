@@ -11,6 +11,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        GO_VERSION: ${GO_VERSION:-1.24}
     image: ${IMAGE_NAME:-netplug-wireguard}:${IMAGE_TAG:-latest}
     container_name: ${NETPLUG_CONTAINER_NAME:-netplug-wireguard}
     restart: ${NETPLUG_RESTART_POLICY:-unless-stopped}

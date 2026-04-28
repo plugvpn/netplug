@@ -49,63 +49,159 @@
           <div class="flex items-center justify-between mb-4">
             <div>
               <div class="text-lg font-semibold">2) WireGuard</div>
-              <div class="text-slate-400 text-sm">Writes <code class="text-slate-200">wg0.conf</code> into your data dir.</div>
+              <div class="text-slate-400 text-sm">Generate a new <code class="text-slate-200">wg0.conf</code>, or import an existing one.</div>
             </div>
-            <button
-              class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sm"
-              hx-post="/setup/wireguard/generate-keys"
-              hx-target="#setup-keys"
-              hx-swap="innerHTML"
-              type="button"
-            >
-              Generate keys
-            </button>
           </div>
 
-          <form method="post" action="/setup/wireguard" class="space-y-4">
-            <div id="setup-keys">
-              {{template "partials/setup_keys.tmpl" .}}
+          <div class="mb-4">
+            <div class="inline-flex rounded-lg bg-slate-950/60 border border-slate-800 p-1">
+              <button id="wg-mode-generate" type="button" class="px-3 py-1.5 rounded-md text-sm font-medium bg-slate-800 text-slate-100">
+                Generate
+              </button>
+              <button id="wg-mode-import" type="button" class="px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-slate-100">
+                Import <span class="font-mono text-xs">wg0.conf</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="wg-generate-panel" class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="text-sm text-slate-400">Creates a fresh server config and stores it in your data dir.</div>
+              <button
+                class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sm"
+                hx-post="/setup/wireguard/generate-keys"
+                hx-target="#setup-keys"
+                hx-swap="innerHTML"
+                type="button"
+              >
+                Generate keys
+              </button>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">Server host</label>
-                <input name="server_host" value="{{if .Prefill}}{{.Prefill.ServerHost}}{{else}}vpn.example.com{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+            <form method="post" action="/setup/wireguard" class="space-y-4">
+              <div id="setup-keys">
+                {{template "partials/setup_keys.tmpl" .}}
               </div>
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">Server port</label>
-                <input name="server_port" value="{{if .Prefill}}{{.Prefill.ServerPort}}{{else}}51820{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">Server host</label>
+                  <input name="server_host" value="{{if .Prefill}}{{.Prefill.ServerHost}}{{else}}vpn.example.com{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">Server port</label>
+                  <input name="server_port" value="{{if .Prefill}}{{.Prefill.ServerPort}}{{else}}51820{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">Server address</label>
+                  <input name="server_address" value="{{if .Prefill}}{{.Prefill.ServerAddress}}{{else}}10.8.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">Client CIDR</label>
+                  <input name="client_address_range" value="{{if .Prefill}}{{.Prefill.ClientAddressRange}}{{else}}10.8.0.0/24{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="block text-xs text-slate-400 mb-1">DNS</label>
+                  <input name="dns" value="{{if .Prefill}}{{.Prefill.DNS}}{{else}}1.1.1.1, 1.0.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="block text-xs text-slate-400 mb-1">Allowed IPs</label>
+                  <input name="allowed_ips" value="{{if .Prefill}}{{.Prefill.AllowedIPs}}{{else}}0.0.0.0/0, ::/0{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">MTU</label>
+                  <input name="mtu" value="{{if .Prefill}}{{.Prefill.MTU}}{{else}}1420{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">Persistent keepalive</label>
+                  <input name="persistent_keepalive" value="{{if .Prefill}}{{.Prefill.PersistentKeepalive}}{{else}}25{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
               </div>
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">Server address</label>
-                <input name="server_address" value="{{if .Prefill}}{{.Prefill.ServerAddress}}{{else}}10.8.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">Client CIDR</label>
-                <input name="client_address_range" value="{{if .Prefill}}{{.Prefill.ClientAddressRange}}{{else}}10.8.0.0/24{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-              </div>
-              <div class="sm:col-span-2">
-                <label class="block text-xs text-slate-400 mb-1">DNS</label>
-                <input name="dns" value="{{if .Prefill}}{{.Prefill.DNS}}{{else}}1.1.1.1, 1.0.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-              </div>
-              <div class="sm:col-span-2">
-                <label class="block text-xs text-slate-400 mb-1">Allowed IPs</label>
-                <input name="allowed_ips" value="{{if .Prefill}}{{.Prefill.AllowedIPs}}{{else}}0.0.0.0/0, ::/0{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">MTU</label>
-                <input name="mtu" value="{{if .Prefill}}{{.Prefill.MTU}}{{else}}1420{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">Persistent keepalive</label>
-                <input name="persistent_keepalive" value="{{if .Prefill}}{{.Prefill.PersistentKeepalive}}{{else}}25{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+
+              <button class="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-medium" {{if not .HasAdmin}}disabled{{end}}>
+                Complete setup
+              </button>
+            </form>
+          </div>
+
+          <div id="wg-import-panel" class="hidden space-y-4">
+            <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+              <div class="text-sm font-medium text-slate-100 mb-1">Import existing configuration</div>
+              <div class="text-xs text-slate-400">
+                Upload <span class="font-mono">wg0.conf</span>. Peers are imported as VPN users. If a peer block includes <span class="font-mono"># User: name</span>, that name is used; otherwise the peer VPN IP is used.
               </div>
             </div>
 
-            <button class="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-medium" {{if not .HasAdmin}}disabled{{end}}>
-              Complete setup
-            </button>
-          </form>
+            <form method="post" action="/setup/wireguard/import" enctype="multipart/form-data" class="space-y-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                  <label class="block text-xs text-slate-400 mb-1">Server host (for client configs)</label>
+                  <input name="server_host" value="vpn.example.com" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
+                </div>
+
+                <div class="sm:col-span-2">
+                  <label class="block text-xs text-slate-400 mb-1">WireGuard config</label>
+                  <div class="border border-slate-800 bg-slate-950 rounded-lg p-3">
+                    <input name="wg0_conf" type="file" accept=".conf,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" required />
+                    <div class="mt-2 text-xs text-slate-500">File should include <span class="font-mono">[Interface]</span> with <span class="font-mono">PrivateKey</span> and one or more <span class="font-mono">[Peer]</span> blocks.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                  <div class="text-sm font-medium text-slate-200">Hook scripts (optional)</div>
+                  <div class="text-xs text-slate-400">Upload a <span class="font-mono">.sh</span> file and it will be referenced in <span class="font-mono">wg0.conf</span> as the corresponding hook.</div>
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">PreUp (.sh)</label>
+                  <input name="pre_up_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">PostUp (.sh)</label>
+                  <input name="post_up_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">PreDown (.sh)</label>
+                  <input name="pre_down_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">PostDown (.sh)</label>
+                  <input name="post_down_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+              </div>
+
+              <button class="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-medium" {{if not .HasAdmin}}disabled{{end}}>
+                Import & complete setup
+              </button>
+            </form>
+          </div>
+
+          <script>
+            (function () {
+              var genBtn = document.getElementById('wg-mode-generate');
+              var impBtn = document.getElementById('wg-mode-import');
+              var genPanel = document.getElementById('wg-generate-panel');
+              var impPanel = document.getElementById('wg-import-panel');
+              if (!genBtn || !impBtn || !genPanel || !impPanel) return;
+
+              function setMode(mode) {
+                var isGen = mode === 'generate';
+                genPanel.classList.toggle('hidden', !isGen);
+                impPanel.classList.toggle('hidden', isGen);
+                genBtn.classList.toggle('bg-slate-800', isGen);
+                genBtn.classList.toggle('text-slate-100', isGen);
+                genBtn.classList.toggle('text-slate-300', !isGen);
+                impBtn.classList.toggle('bg-slate-800', !isGen);
+                impBtn.classList.toggle('text-slate-100', !isGen);
+                impBtn.classList.toggle('text-slate-300', isGen);
+              }
+
+              genBtn.addEventListener('click', function(){ setMode('generate'); });
+              impBtn.addEventListener('click', function(){ setMode('import'); });
+              setMode('generate');
+            })();
+          </script>
         </div>
       </div>
     </div>
