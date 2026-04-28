@@ -1,0 +1,67 @@
+{{define "partials/qr_modal_unavailable.tmpl"}}
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm overflow-y-auto">
+  <div
+    class="absolute inset-0"
+    hx-get="/partials/empty"
+    hx-target="#modal-root"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div class="relative my-8 w-full max-w-lg rounded-md border border-[rgba(148,163,184,0.06)] bg-[var(--np-panel)] shadow-none">
+    <div class="flex items-start justify-between border-b border-[rgba(148,163,184,0.055)] p-6">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-100">QR code not available</h2>
+        <p class="mt-1 text-sm text-gray-400">
+          {{if .Username}}User <span class="font-mono text-gray-300">{{.Username}}</span>{{else}}This user{{end}} cannot export a mobile WireGuard config from the dashboard yet.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="shrink-0 rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1e2d42] hover:text-gray-200"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+      >
+        <i data-lucide="x" class="h-5 w-5"></i>
+      </button>
+    </div>
+
+    <div class="space-y-4 p-6 text-sm text-gray-300">
+      {{if .IsImport}}
+        <p class="leading-relaxed text-gray-400">
+          Users created by importing <span class="font-mono text-gray-300">wg0.conf</span> only store each peer’s
+          <span class="text-gray-300">public key</span> on the server. A QR code needs the client’s
+          <span class="text-gray-300">private key</span>, which is not present in a standard server config.
+        </p>
+        <p class="leading-relaxed text-gray-400">
+          If you still have the original client private key, open <span class="text-gray-200">Edit user</span> and paste it there (and the matching public key if required). After saving, the QR action will work.
+        </p>
+      {{else if .Detail}}
+        <p class="leading-relaxed text-gray-400">{{.Detail}}</p>
+      {{else}}
+        <p class="leading-relaxed text-gray-400">
+          This user has no client private key stored. Add one when editing the user, or recreate the user with generated keys.
+        </p>
+      {{end}}
+    </div>
+
+    <div class="border-t border-[rgba(148,163,184,0.055)] p-6">
+      <button
+        type="button"
+        class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[#152031] px-6 py-3 font-medium text-gray-200 transition-all hover:bg-[#1e2d42]"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    try { lucide.createIcons(); } catch (e) {}
+  })();
+</script>
+{{end}}

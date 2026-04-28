@@ -1,0 +1,114 @@
+{{define "partials/np_form_submit_busy.tmpl"}}
+<style>
+  @keyframes np-submit-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  button.np-btn-busy,
+  input[type="submit"].np-btn-busy,
+  input[type="image"].np-btn-busy {
+    position: relative !important;
+    pointer-events: none;
+    cursor: wait !important;
+    color: transparent !important;
+    text-shadow: none !important;
+  }
+  button.np-btn-busy * {
+    opacity: 0 !important;
+  }
+  button.np-btn-busy::after,
+  input[type="submit"].np-btn-busy::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin: -0.5625rem 0 0 -0.5625rem;
+    border-radius: 9999px;
+    border: 2px solid rgba(255, 255, 255, 0.22);
+    border-top-color: rgba(255, 255, 255, 0.95);
+    animation: np-submit-spin 0.65s linear infinite;
+    box-sizing: border-box;
+  }
+</style>
+<script>
+  (function () {
+    function setBusy(el, on) {
+      if (!el) return;
+      var tag = el.tagName;
+      if (tag !== "BUTTON" && tag !== "INPUT") return;
+      if (tag === "BUTTON") {
+        var bt = el.getAttribute("type");
+        if (bt && bt !== "submit") return;
+      } else {
+        var it = el.type;
+        if (it !== "submit" && it !== "image") return;
+      }
+      if (on) {
+        el.disabled = true;
+        el.classList.add("np-btn-busy");
+        el.setAttribute("aria-busy", "true");
+      } else {
+        el.classList.remove("np-btn-busy");
+        el.removeAttribute("aria-busy");
+        el.disabled = false;
+      }
+    }
+
+    function findSubmitControl(form, submitter) {
+      if (submitter) {
+        if (submitter.tagName === "BUTTON") {
+          var bt = submitter.getAttribute("type");
+          if (!bt || bt === "submit") return submitter;
+        }
+        if (submitter.tagName === "INPUT" && (submitter.type === "submit" || submitter.type === "image")) {
+          return submitter;
+        }
+      }
+      return form.querySelector(
+        'button[type="submit"], button:not([type]), input[type="submit"], input[type="image"]'
+      );
+    }
+
+    document.addEventListener(
+      "submit",
+      function (e) {
+        var form = e.target;
+        if (!form || form.tagName !== "FORM") return;
+        if (form.getAttribute("data-no-submit-busy") !== null) return;
+        var btn = findSubmitControl(form, e.submitter);
+        setBusy(btn, true);
+      },
+      true
+    );
+
+    document.body.addEventListener("htmx:afterRequest", function (evt) {
+      var elt = evt.detail && evt.detail.elt;
+      if (!elt || elt.tagName !== "FORM") return;
+      if (
+        !elt.hasAttribute("hx-post") &&
+        !elt.hasAttribute("hx-put") &&
+        !elt.hasAttribute("hx-patch") &&
+        !elt.hasAttribute("hx-delete")
+      ) {
+        return;
+      }
+      elt.querySelectorAll("button.np-btn-busy, input.np-btn-busy").forEach(function (b) {
+        setBusy(b, false);
+      });
+    });
+
+    document.body.addEventListener("htmx:sendError", function (evt) {
+      var elt = evt.detail && evt.detail.elt;
+      if (!elt || elt.tagName !== "FORM") return;
+      elt.querySelectorAll("button.np-btn-busy, input.np-btn-busy").forEach(function (b) {
+        setBusy(b, false);
+      });
+    });
+
+    window.npSetSubmitBusy = setBusy;
+  })();
+</script>
+{{end}}

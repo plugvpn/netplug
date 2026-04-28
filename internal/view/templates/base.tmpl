@@ -5,51 +5,91 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{.Title}}</title>
-    <script src="https://unpkg.com/htmx.org@2.0.6"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@0.563.0/dist/umd/lucide.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <!-- qrcode@1.5.4 has no plain-browser UMD bundle on jsDelivr; use jsDelivr +esm to avoid require() -->
+    <link rel="stylesheet" href="/assets/app.css" />
+    <script src="/assets/htmx.min.js"></script>
+    <script src="/assets/lucide.min.js"></script>
+    <script src="/assets/chart.umd.min.js"></script>
     <script type="module">
-      import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm';
+      import QRCode from "/assets/qrcode.esm.js";
       window.QRCode = QRCode;
     </script>
     <style>
-      /* From original globals.css (scrollbars + base) */
-      * { scrollbar-width: thin; scrollbar-color: #374151 #1f2937; }
-      *::-webkit-scrollbar { width: 8px; height: 8px; }
-      *::-webkit-scrollbar-track { background: #1f2937; }
-      *::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
-      *::-webkit-scrollbar-thumb:hover { background: #4b5563; }
-      html { background-color: #f9fafb; }
-      html.dark { background-color: #030712; }
+      /* Shared panel hues */
+      :root {
+        --np-panel: #0c111c;
+        --np-raised: #141f2e;
+      }
+
+      /*
+        Dark-only UI; html keeps class "dark" for Tailwind dark: variants.
+        Single scrollbar + canvas (no light-mode branch).
+      */
+      html.dark {
+        color-scheme: dark;
+        --np-canvas: #010409;
+        --np-depth: #080d12;
+        --np-field: #121a28;
+        --np-muted: #1a2738;
+        background-color: var(--np-canvas);
+      }
+      html.dark * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(61, 84, 102, 0.55) var(--np-canvas);
+      }
+      html.dark *::-webkit-scrollbar { width: 8px; height: 8px; }
+      html.dark *::-webkit-scrollbar-track { background: var(--np-canvas); }
+      html.dark *::-webkit-scrollbar-thumb { background: rgba(61, 84, 102, 0.45); border-radius: 4px; }
+      html.dark *::-webkit-scrollbar-thumb:hover { background: rgba(74, 98, 128, 0.55); }
+
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
-        background-color: #f9fafb;
+        background-color: var(--np-canvas);
         min-height: 100vh;
       }
-      body.dark, .dark body { background-color: #030712; }
+
+      /* Prefer our palette over system high-contrast outlines (often bright) on dark pages */
+      @media (forced-colors: active) {
+        html.dark * {
+          forced-color-adjust: none;
+        }
+      }
+
+      .np-page-loading {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        background: rgba(1, 4, 9, 0.72);
+        backdrop-filter: blur(6px);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.18s ease, visibility 0.18s;
+      }
+      .np-page-loading.np-page-loading--visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+      }
+      @keyframes np-spin {
+        to { transform: rotate(360deg); }
+      }
+      .np-page-loading__ring {
+        width: 2rem;
+        height: 2rem;
+        border: 2px solid rgba(16, 185, 129, 0.2);
+        border-top-color: rgb(16, 185, 129);
+        border-radius: 9999px;
+        animation: np-spin 0.7s linear infinite;
+      }
     </style>
     <script>
-      // Dark-first like the original UI (can be toggled).
-      (function () {
-        try {
-          var v = localStorage.getItem('theme');
-          if (v === 'light') {
-            document.documentElement.classList.remove('dark');
-            return;
-          }
-          if (v === 'dark' || !v) {
-            document.documentElement.classList.add('dark');
-          }
-        } catch (e) {}
-      })();
-      function toggleTheme() {
-        var isDark = document.documentElement.classList.toggle('dark');
-        try { localStorage.setItem('theme', isDark ? 'dark' : 'light'); } catch (e) {}
-      }
       function toggleSidebar() {
         var el = document.getElementById('sidebar');
         if (!el) return;
@@ -99,11 +139,71 @@
         } catch (e) {}
         try { lucide.createIcons(); } catch (e) {}
         try { initBandwidthChart(); } catch (e) {}
+        try { syncShellNav(); } catch (e) {}
       });
 
-      document.addEventListener('htmx:afterSwap', function () {
+      window.addEventListener('popstate', function () {
+        try { syncShellNav(); } catch (e) {}
+      });
+
+      document.addEventListener('htmx:afterSwap', function (evt) {
         try { lucide.createIcons(); } catch (e) {}
         try { initBandwidthChart(); } catch (e) {}
+        try {
+          if (evt.detail && evt.detail.target && evt.detail.target.id === 'np-main') {
+            setPageLoading(false);
+          }
+        } catch (e) {}
+      });
+
+      document.addEventListener('htmx:afterSettle', function () {
+        try { syncShellNav(); } catch (e) {}
+      });
+
+      function syncShellNav() {
+        var path = window.location.pathname || '';
+        document.querySelectorAll('#sidebar a.np-spa-link').forEach(function (a) {
+          var href = a.getAttribute('href');
+          if (!href) return;
+          var on = href === path;
+          a.classList.toggle('np-active', on);
+        });
+      }
+
+      function npMainSwapTarget(detail) {
+        if (!detail) return false;
+        if (detail.target && detail.target.id === 'np-main') return true;
+        var elt = detail.elt;
+        if (!elt) return false;
+        var raw = elt.getAttribute && elt.getAttribute('hx-target');
+        if (raw && raw.trim() === '#np-main') return true;
+        if (window.htmx && typeof htmx.getTarget === 'function') {
+          try {
+            var t = htmx.getTarget(elt);
+            if (t && t.id === 'np-main') return true;
+          } catch (e) {}
+        }
+        return false;
+      }
+
+      function setPageLoading(on) {
+        var el = document.getElementById('np-page-loading');
+        if (!el) return;
+        el.classList.toggle('np-page-loading--visible', !!on);
+        try {
+          el.setAttribute('aria-busy', on ? 'true' : 'false');
+          el.setAttribute('aria-hidden', on ? 'false' : 'true');
+        } catch (e) {}
+      }
+
+      document.addEventListener('htmx:beforeRequest', function (evt) {
+        if (npMainSwapTarget(evt.detail)) setPageLoading(true);
+      });
+      document.addEventListener('htmx:responseError', function (evt) {
+        if (npMainSwapTarget(evt.detail)) setPageLoading(false);
+      });
+      document.addEventListener('htmx:sendError', function (evt) {
+        if (npMainSwapTarget(evt.detail)) setPageLoading(false);
       });
 
       var __bwChart = null;
@@ -166,7 +266,7 @@
         }
 
         var isDark = document.documentElement.classList.contains('dark');
-        var grid = isDark ? 'rgba(55,65,81,0.6)' : 'rgba(229,231,235,0.8)';
+        var grid = isDark ? 'rgba(42,63,92,0.45)' : 'rgba(229,231,235,0.8)';
         var ticks = isDark ? '#9ca3af' : '#6b7280';
 
         __bwChart = new Chart(ctx, {
@@ -191,11 +291,11 @@
                 }
               },
               tooltip: {
-                backgroundColor: isDark ? '#1f2937' : '#ffffff',
-                borderColor: isDark ? '#374151' : '#e5e7eb',
+                backgroundColor: isDark ? '#1e2d42' : '#ffffff',
+                borderColor: isDark ? 'rgba(42, 63, 92, 0.42)' : '#e5e7eb',
                 borderWidth: 1,
                 titleColor: ticks,
-                bodyColor: isDark ? '#e5e7eb' : '#111827',
+                bodyColor: isDark ? '#e5e7eb' : '#152031',
                 callbacks: {
                   label: function (ctx) {
                     return ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y);
@@ -219,13 +319,25 @@
       }
     </script>
   </head>
-  <body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+  <body class="h-full bg-[var(--np-canvas)] text-gray-100">
     <div id="np-toast-root" class="fixed right-6 top-6 z-[100] space-y-3"></div>
     <div class="flex h-screen overflow-hidden">
       {{template "sidebar.tmpl" .}}
-      <main class="flex-1 overflow-y-auto">
-        {{.Body}}
-      </main>
+      <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <div
+          id="np-page-loading"
+          class="np-page-loading"
+          aria-busy="false"
+          aria-hidden="true"
+          aria-live="polite"
+        >
+          <div class="np-page-loading__ring" aria-hidden="true"></div>
+          <span class="text-xs font-medium text-slate-400">Loading…</span>
+        </div>
+        <main id="np-main" class="relative flex-1 min-h-0 overflow-y-auto">
+          {{.Body}}
+        </main>
+      </div>
     </div>
     <script>
       (function () {
@@ -237,7 +349,7 @@
             var isErr = (t === 'error' || t === 'danger' || t === 'fail' || t === 'failed');
             var el = document.createElement('div');
             el.className =
-              'w-[360px] max-w-[calc(100vw-3rem)] rounded-lg border px-4 py-3 shadow-2xl backdrop-blur ' +
+              'w-[360px] max-w-[calc(100vw-3rem)] rounded-lg border px-4 py-3 shadow-lg shadow-black/40 backdrop-blur ' +
               (isErr
                 ? 'border-red-900/60 bg-red-950/80 text-red-100'
                 : 'border-emerald-900/60 bg-emerald-950/70 text-emerald-50');
@@ -277,6 +389,7 @@
         });
       })();
     </script>
+    {{template "partials/np_form_submit_busy.tmpl" .}}
   </body>
 </html>
 {{end}}

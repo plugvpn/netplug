@@ -10,7 +10,7 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 	h := NewHandlers(svc)
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		http.Redirect(w, r, "/ui", http.StatusFound)
 	})
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -34,24 +34,23 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 	r.With(h.RequireAuth).Group(func(r chi.Router) {
 		r.Post("/logout", h.LogoutPost)
 
-		r.Get("/dashboard", h.DashboardPage)
-		r.Get("/dashboard/users", h.UsersPage)
-		r.Post("/dashboard/users", h.UserCreatePost)
-		r.Post("/dashboard/users/{id}/edit", h.UserUpdatePost)
-		r.Post("/dashboard/users/{id}/delete", h.UserDeletePost)
-		r.Post("/dashboard/users/{id}/toggle", h.UserTogglePost)
-		r.Get("/dashboard/users/{id}/config", h.UserConfigGet)
-		r.Get("/dashboard/connections", h.ConnectionsPage)
-		r.Get("/dashboard/servers", h.ServersPage)
-		r.Get("/dashboard/activity", h.ActivityPage)
-		r.Get("/dashboard/wireguard", h.WireGuardPage)
-		r.Post("/dashboard/wireguard/save", h.WireGuardSavePost)
-		r.Post("/dashboard/wireguard/reload", h.WireGuardReloadPost)
-		r.Get("/dashboard/settings", h.SettingsPage)
+		r.Get("/ui", h.UIPage)
+		r.Get("/ui/users", h.UsersPage)
+		r.Post("/ui/users", h.UserCreatePost)
+		r.Post("/ui/users/{id}/edit", h.UserUpdatePost)
+		r.Post("/ui/users/{id}/delete", h.UserDeletePost)
+		r.Post("/ui/users/{id}/toggle", h.UserTogglePost)
+		r.Get("/ui/users/{id}/config", h.UserConfigGet)
+		r.Get("/ui/connections", h.ConnectionsPage)
+		r.Get("/ui/servers", h.ServersPage)
+		r.Get("/ui/wireguard", h.WireGuardPage)
+		r.Post("/ui/wireguard/save", h.WireGuardSavePost)
+		r.Post("/ui/wireguard/reload", h.WireGuardReloadPost)
+		r.Get("/ui/settings", h.SettingsPage)
 
 		// HTMX partials
-		r.Get("/partials/dashboard/stats", h.DashboardStatsPartial)
-		r.Get("/partials/dashboard/active-connections", h.ActiveConnectionsPartial)
+		r.Get("/partials/ui/stats", h.UIStatsPartial)
+		r.Get("/partials/ui/active-connections", h.ActiveConnectionsPartial)
 		r.Get("/partials/overview/all", h.OverviewAllPartial)
 		r.Get("/partials/users/add-modal", h.AddUserModalPartial)
 		r.Get("/partials/users/{id}/edit-modal", h.EditUserModalPartial)

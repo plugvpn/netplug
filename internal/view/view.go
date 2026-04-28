@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
+
+	"netplug-go/internal/version"
 )
 
 //go:embed templates/**/*.tmpl templates/*.tmpl
@@ -31,11 +34,22 @@ var (
 func parse() (*template.Template, error) {
 	once.Do(func() {
 		funcMap := template.FuncMap{
-			"humanBytes": humanBytes,
+			"humanBytes":  humanBytes,
 			"humanUptime": humanUptime,
-			"lower":      strings.ToLower,
-			"eq":         func(a, b any) bool { return a == b },
-			"dict":       dict,
+			"lower":       strings.ToLower,
+			"initial": func(s string) string {
+				s = strings.TrimSpace(s)
+				if s == "" {
+					return "?"
+				}
+				r, _ := utf8.DecodeRuneInString(s)
+				if r == utf8.RuneError {
+					return "?"
+				}
+				return strings.ToUpper(string(r))
+			},
+			"eq":          func(a, b any) bool { return a == b },
+			"dict":        dict,
 			"breadcrumbs": breadcrumbs,
 			"durationSeconds": func(v any) time.Duration {
 				switch x := v.(type) {
@@ -110,10 +124,10 @@ func breadcrumbs(path string) []Crumb {
 		}
 		segs = append(segs, p)
 	}
-	crumbs := []Crumb{{Label: "Dashboard", Href: "/dashboard"}}
-	cur := "/dashboard"
+	crumbs := []Crumb{{Label: "UI", Href: "/ui"}}
+	cur := "/ui"
 	for _, s := range segs {
-		if s == "dashboard" {
+		if s == "ui" {
 			continue
 		}
 		cur += "/" + s
@@ -169,11 +183,27 @@ func Render(w http.ResponseWriter, r *http.Request, name string, data M) {
 	if _, ok := data["Breadcrumbs"]; !ok {
 		data["Breadcrumbs"] = breadcrumbs(r.URL.Path)
 	}
+	if _, ok := data["GitRevision"]; !ok {
+		data["GitRevision"] = version.Revision()
+	}
+	if _, ok := data["GitRevisionShort"]; !ok {
+		data["GitRevisionShort"] = version.RevisionShort()
+	}
 
 	// Compose layout by rendering the per-page content into a safe HTML field.
+	htmx := strings.EqualFold(r.Header.Get("HX-Request"), "true")
+	htmxMainFragment := htmx && strings.HasPrefix(r.URL.Path, "/ui")
+
 	if strings.HasSuffix(name, ".tmpl") && name != "login.tmpl" && name != "setup.tmpl" {
 		contentName := strings.TrimSuffix(name, ".tmpl") + ".content"
 		headerRightName := strings.TrimSuffix(name, ".tmpl") + ".header_right"
+
+		// HeaderRight must be set before .content runs (page_header embeds it).
+		if right, err := executeToHTMLOptional(t, headerRightName, data); err == nil {
+			data["HeaderRight"] = right
+		} else {
+			data["HeaderRight"] = template.HTML("")
+		}
 
 		body, err := executeToHTML(t, contentName, data)
 		if err != nil {
@@ -183,10 +213,12 @@ func Render(w http.ResponseWriter, r *http.Request, name string, data M) {
 		}
 		data["Body"] = body
 
-		if right, err := executeToHTMLOptional(t, headerRightName, data); err == nil {
-			data["HeaderRight"] = right
-		} else {
-			data["HeaderRight"] = template.HTML("")
+		if htmxMainFragment {
+			if title, ok := data["Title"].(string); ok && title != "" {
+				w.Header().Set("HX-Title", title)
+			}
+			_, _ = w.Write([]byte(body))
+			return
 		}
 	}
 
@@ -213,6 +245,12 @@ func RenderPartial(w http.ResponseWriter, r *http.Request, name string, data M) 
 	}
 	if _, ok := data["Breadcrumbs"]; !ok {
 		data["Breadcrumbs"] = breadcrumbs(r.URL.Path)
+	}
+	if _, ok := data["GitRevision"]; !ok {
+		data["GitRevision"] = version.Revision()
+	}
+	if _, ok := data["GitRevisionShort"]; !ok {
+		data["GitRevisionShort"] = version.RevisionShort()
 	}
 	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("template execute error (%s): %v", name, err)
@@ -244,5 +282,3 @@ func executeToHTMLOptional(t *template.Template, name string, data any) (templat
 type errMissingTemplate string
 
 func (e errMissingTemplate) Error() string { return "missing template: " + string(e) }
-
-

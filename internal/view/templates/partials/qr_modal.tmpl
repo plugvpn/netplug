@@ -7,15 +7,15 @@
     hx-swap="innerHTML"
   ></div>
 
-  <div class="relative my-8 w-full max-w-2xl rounded-xl border border-gray-800 bg-gray-900 shadow-2xl max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between border-b border-gray-800 p-6">
+  <div class="relative my-8 w-full max-w-2xl rounded-md border border-[rgba(148,163,184,0.06)] bg-[var(--np-panel)] shadow-none max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between border-b border-[rgba(148,163,184,0.055)] p-6">
       <div>
         <h2 class="text-xl font-semibold text-gray-100">VPN Configuration QR Code</h2>
         <p class="mt-1 text-sm text-gray-400">Scan this code or copy the configuration below</p>
       </div>
       <button
         type="button"
-        class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1e2d42] hover:text-gray-200"
         hx-get="/partials/empty"
         hx-target="#modal-root"
         hx-swap="innerHTML"
@@ -25,7 +25,7 @@
     </div>
 
     <div class="p-6">
-      <div class="mb-6 w-full rounded-lg bg-gray-800/60 p-4 border border-gray-800">
+      <div class="mb-6 w-full rounded border border-[rgba(148,163,184,0.048)] bg-[#0a0d12] p-4">
         <div class="mb-2 flex items-center gap-2 text-gray-200">
           <i data-lucide="user" class="h-4 w-4 text-gray-400" style="stroke-width:1.5"></i>
           <span class="font-medium">{{.Username}}</span>
@@ -38,13 +38,13 @@
       </div>
 
       <div class="mb-8 flex justify-center">
-        <div class="rounded-xl bg-white p-6 shadow-lg">
+        <div class="rounded-md bg-white p-6 shadow-lg">
           <canvas id="np-qr-canvas" width="256" height="256"></canvas>
         </div>
       </div>
 
       <div class="w-full">
-        <div class="mb-3 flex items-center justify-between border-b border-gray-800 pb-3">
+        <div class="mb-3 flex items-center justify-between border-b border-[rgba(148,163,184,0.055)] pb-3">
           <div>
             <h3 class="text-sm font-medium text-gray-100">Configuration File</h3>
             <p class="text-xs text-gray-400 font-mono">{{.FileName}}</p>
@@ -58,11 +58,11 @@
           </div>
         </div>
 
-        <div id="np-conf-wrap" class="relative overflow-hidden rounded-lg border border-gray-800 bg-gray-950" style="display:none;">
+        <div id="np-conf-wrap" class="relative overflow-hidden rounded border border-[rgba(148,163,184,0.06)] bg-[#0a0d12]" style="display:none;">
           <button
             type="button"
             id="np-conf-copy"
-            class="absolute right-3 top-3 z-10 rounded bg-gray-800/80 p-1.5 text-gray-300 backdrop-blur-sm transition-colors hover:text-white"
+            class="absolute right-3 top-3 z-10 rounded bg-[#1e2d42]/80 p-1.5 text-gray-300 backdrop-blur-sm transition-colors hover:text-white"
             title="Copy to clipboard"
           >
             <i data-lucide="copy" class="h-4 w-4"></i>
@@ -72,10 +72,10 @@
       </div>
     </div>
 
-    <div class="border-t border-gray-800 p-6">
+    <div class="border-t border-[rgba(148,163,184,0.055)] p-6">
       <button
         type="button"
-        class="w-full rounded-lg border border-gray-700 bg-gray-900 px-6 py-3 font-medium text-gray-200 transition-all hover:bg-gray-800"
+        class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[#152031] px-6 py-3 font-medium text-gray-200 transition-all hover:bg-[#1e2d42]"
         hx-get="/partials/empty"
         hx-target="#modal-root"
         hx-swap="innerHTML"

@@ -77,7 +77,7 @@ func WriteWireGuardConfig(sqlDB *sql.DB, dataDir string) error {
 
 	var buf bytes.Buffer
 
-	// Header (parity with original dashboard output)
+	// Header (parity with original web UI output)
 	generatedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	buf.WriteString("# WireGuard Server Configuration\n")
 	buf.WriteString("# Generated at: " + generatedAt + "\n")

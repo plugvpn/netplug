@@ -5,34 +5,68 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{.Title}}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/assets/app.css" />
   </head>
-  <body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center px-4">
-    <div class="w-full max-w-md bg-slate-900/60 border border-slate-800 rounded-lg p-6">
-      <div class="text-xl font-semibold mb-1">Sign in</div>
-      <div class="text-slate-400 text-sm mb-6">Use an admin account from the SQLite database.</div>
-
-      {{if .Error}}
-      <div class="mb-4 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded p-3">{{.Error}}</div>
-      {{end}}
-
-      <form method="post" action="/login" class="space-y-4">
-        <div>
-          <label class="block text-sm text-slate-300 mb-1">Username</label>
-          <input name="username" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" autocomplete="username" />
+  <body class="min-h-screen flex items-center justify-center px-4 text-white antialiased bg-[radial-gradient(ellipse_at_center,_#141f2e_0%,_#0c111c_55%,_#0a0d12_100%)]">
+    <div class="w-full max-w-[400px]">
+      <header class="flex flex-col items-center mb-8">
+        <div class="flex items-center gap-3">
+          <img
+            src="/plug-icon.png"
+            alt="NetPlug"
+            width="44"
+            height="44"
+            class="h-11 w-11 shrink-0 rounded-full ring-1 ring-slate-500/25"
+          />
+          <h1 class="text-xl font-bold tracking-tight text-white">NetPlug UI</h1>
         </div>
-        <div>
-          <label class="block text-sm text-slate-300 mb-1">Password</label>
-          <input name="password" type="password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" autocomplete="current-password" />
-        </div>
-        <button class="w-full py-2 rounded bg-indigo-600 hover:bg-indigo-500 font-medium">Login</button>
-      </form>
+        <p class="mt-3 text-center text-sm text-[#94a3b8]">Sign in to access the dashboard</p>
+      </header>
 
-      <div class="mt-6 text-xs text-slate-500">
-        Tip: create a user by inserting into <code class="text-slate-300">users</code>.
+      <div
+        class="rounded-lg border border-slate-700/35 bg-slate-900/30 px-8 py-10 shadow-[0_0_0_1px_rgba(148,163,184,0.04)] backdrop-blur-sm"
+      >
+        {{if .Error}}
+        <div
+          class="mb-6 rounded-lg border border-red-500/30 bg-red-950/50 px-3 py-2.5 text-sm text-red-200"
+        >
+          {{.Error}}
+        </div>
+        {{end}}
+
+        <form method="post" action="/login" class="space-y-5">
+          <div>
+            <label for="login-username" class="mb-1.5 block text-sm text-[#718096]">Username</label>
+            <input
+              id="login-username"
+              name="username"
+              type="text"
+              placeholder="admin"
+              autocomplete="username"
+              autofocus
+              class="w-full rounded-lg border border-slate-300 bg-[#e2e8f0] px-3.5 py-2.5 text-slate-900 placeholder:text-slate-500 outline-none transition focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/35"
+            />
+          </div>
+          <div>
+            <label for="login-password" class="mb-1.5 block text-sm text-[#718096]">Password</label>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              class="w-full rounded-lg border border-slate-300 bg-[#e2e8f0] px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/30"
+            />
+          </div>
+          <button
+            type="submit"
+            class="w-full rounded-lg bg-[#10b981] py-3 text-center text-base font-semibold text-white shadow-sm transition hover:bg-[#0d9668] focus:outline-none focus:ring-2 focus:ring-[#10b981] focus:ring-offset-2 focus:ring-offset-[#0f172a]"
+          >
+            Sign In
+          </button>
+        </form>
       </div>
     </div>
+    {{template "partials/np_form_submit_busy.tmpl" .}}
   </body>
 </html>
 {{end}}
-

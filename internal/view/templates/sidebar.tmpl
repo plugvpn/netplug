@@ -2,26 +2,36 @@
 <aside
   id="sidebar"
   data-collapsed="false"
-  class="relative flex h-full flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 transition-all duration-300 w-[280px]"
+  class="relative flex h-full flex-col border-r border-gray-200 bg-white dark:border-[rgba(148,163,184,0.06)] dark:bg-[var(--np-panel)] transition-all duration-300 w-[280px]"
 >
   <style>
     #sidebar[data-collapsed="true"] { width: 64px; }
     #sidebar[data-collapsed="true"] .sb-hide { display: none; }
     #sidebar[data-collapsed="true"] .sb-center { justify-content: center; }
+
+    /* SPA nav active (runtime + works without Tailwind JIT for dynamic classes) */
+    #sidebar a.np-spa-link.np-active {
+      background-color: rgb(236 253 245);
+      color: rgb(6 78 59);
+    }
+    html.dark #sidebar a.np-spa-link.np-active {
+      background-color: rgba(16, 185, 129, 0.15);
+      color: rgb(209 250 229);
+    }
   </style>
 
-  <div class="relative flex h-16 items-center gap-3 border-b border-gray-200 dark:border-gray-800 px-6">
+  <div class="relative flex h-16 items-center gap-3 border-b border-gray-200 dark:border-[rgba(148,163,184,0.06)] px-6">
     <div class="flex items-center gap-3 min-w-0 sb-center">
       <img src="/plug-icon.png" alt="NetPlug" width="40" height="40" class="rounded-full" />
       <div class="flex flex-col min-w-0 sb-hide">
-        <span class="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">NetPlug Dashboard</span>
-        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Version 1.0</span>
+        <span class="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">NetPlug UI</span>
+        <span class="text-xs font-medium text-gray-500 dark:text-gray-400" title="{{.GitRevision}}">Version {{.GitRevisionShort}}</span>
       </div>
     </div>
 
     <button
       onclick="toggleSidebar()"
-      class="absolute -right-3 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+      class="absolute -right-3 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-muted)] dark:text-gray-400 dark:hover:bg-[#2a3f5c] dark:hover:text-gray-300"
       title="Toggle sidebar"
       type="button"
     >
@@ -31,17 +41,20 @@
   </div>
 
   <nav class="flex-1 space-y-0.5 px-2 py-3">
-    {{template "sidebar_item.tmpl" dict "Href" "/dashboard" "Label" "Overview" "Icon" "activity" "Active" (eq .Path "/dashboard") }}
-    {{template "sidebar_item.tmpl" dict "Href" "/dashboard/connections" "Label" "Connections" "Icon" "link-2" "Active" (eq .Path "/dashboard/connections") }}
-    {{template "sidebar_item.tmpl" dict "Href" "/dashboard/activity" "Label" "Activity" "Icon" "file-text" "Active" (eq .Path "/dashboard/activity") }}
-    {{template "sidebar_item.tmpl" dict "Href" "/dashboard/users" "Label" "Users" "Icon" "users" "Active" (eq .Path "/dashboard/users") }}
-    {{template "sidebar_item.tmpl" dict "Href" "/dashboard/wireguard" "Label" "Wireguard" "Icon" "server" "Active" (eq .Path "/dashboard/wireguard") }}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui" "Label" "Overview" "Icon" "layout-dashboard" "Active" (eq .Path "/ui") }}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui/connections" "Label" "Connections" "Icon" "link-2" "Active" (eq .Path "/ui/connections") }}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui/users" "Label" "Users" "Icon" "users" "Active" (eq .Path "/ui/users") }}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui/wireguard" "Label" "Wireguard" "Icon" "server" "Active" (eq .Path "/ui/wireguard") }}
   </nav>
 
-  <div class="border-t border-gray-200 px-2 py-3 dark:border-gray-800">
+  <div class="border-t border-gray-200 px-2 py-3 dark:border-[rgba(148,163,184,0.06)]">
     <a
-      href="/dashboard/settings"
-      class="flex items-center gap-3 rounded px-3 py-2.5 text-sm font-normal transition-colors sb-center {{if eq .Path "/dashboard/settings"}}bg-emerald-50 text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-100{{else}}text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100{{end}}"
+      href="/ui/settings"
+      class="np-spa-link flex items-center gap-3 rounded px-3 py-2.5 text-sm font-normal transition-colors sb-center text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[var(--np-muted)] dark:hover:text-gray-100 {{if eq .Path "/ui/settings"}}np-active{{end}}"
+      hx-get="/ui/settings"
+      hx-target="#np-main"
+      hx-push-url="true"
+      hx-swap="innerHTML"
       title="Settings"
     >
       <i data-lucide="settings" class="h-4 w-4" style="stroke-width:1.5"></i>
@@ -49,7 +62,7 @@
     </a>
   </div>
 
-  <div class="border-t border-gray-200 px-2 py-3 dark:border-gray-800">
+  <div class="border-t border-gray-200 px-2 py-3 dark:border-[rgba(148,163,184,0.06)]">
     <div class="flex items-center justify-between gap-2 px-2 sb-center">
       <div class="flex items-center gap-2 min-w-0 flex-1 sb-hide">
         <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-xs font-medium text-white">
@@ -59,11 +72,8 @@
           <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">Admin</span>
         </div>
       </div>
-      <button onclick="toggleTheme()" class="rounded p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300" title="Toggle theme" type="button">
-        <i data-lucide="sun-moon" class="h-4 w-4"></i>
-      </button>
       <form method="post" action="/logout">
-        <button class="rounded p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300 shrink-0" title="Logout">
+        <button class="rounded p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-[var(--np-muted)] dark:hover:text-gray-300 shrink-0" title="Logout">
           <i data-lucide="log-out" class="h-4 w-4"></i>
         </button>
       </form>
@@ -75,11 +85,14 @@
 {{define "sidebar_item.tmpl"}}
 <a
   href="{{.Href}}"
-  class="flex items-center gap-3 rounded px-3 py-2.5 text-sm font-normal transition-colors sb-center {{if .Active}}bg-emerald-50 text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-100{{else}}text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100{{end}}"
+  class="np-spa-link flex items-center gap-3 rounded px-3 py-2.5 text-sm font-normal transition-colors sb-center text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[var(--np-muted)] dark:hover:text-gray-100 {{if .Active}}np-active{{end}}"
+  hx-get="{{.Href}}"
+  hx-target="#np-main"
+  hx-push-url="true"
+  hx-swap="innerHTML"
   title="{{.Label}}"
 >
   <i data-lucide="{{.Icon}}" class="h-4 w-4" style="stroke-width:1.5"></i>
   <span class="sb-hide">{{.Label}}</span>
 </a>
 {{end}}
-

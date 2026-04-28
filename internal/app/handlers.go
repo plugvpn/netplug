@@ -4,20 +4,22 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"net/http"
 	"net"
-	"path/filepath"
+	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
-	"net/url"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"netplug-go/internal/db"
+	"netplug-go/internal/version"
 	"netplug-go/internal/view"
 	"netplug-go/internal/wireguard"
 
@@ -87,8 +89,8 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		id       string
-		hash     string
+		id   string
+		hash string
 	)
 	err := h.svc.DB.QueryRow(`SELECT id, password FROM users WHERE username = ? LIMIT 1`, username).Scan(&id, &hash)
 	if err != nil {
@@ -111,14 +113,14 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.svc.Sessions.Put(r.Context(), "user_id", id)
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, "/ui", http.StatusFound)
 }
 
 func (h *Handlers) SetupPage(w http.ResponseWriter, r *http.Request) {
-	// If already setup, go to dashboard/login.
+	// If already setup, redirect to the UI or login.
 	if h.isSetupComplete() {
 		if h.svc.Sessions.GetString(r.Context(), "user_id") != "" {
-			http.Redirect(w, r, "/dashboard", http.StatusFound)
+			http.Redirect(w, r, "/ui", http.StatusFound)
 			return
 		}
 		http.Redirect(w, r, "/login", http.StatusFound)
@@ -160,8 +162,20 @@ func (h *Handlers) SetupAdminPost(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 	confirm := r.FormValue("confirm_password")
-	if username == "" || password == "" || confirm == "" || password != confirm {
-		http.Redirect(w, r, "/setup", http.StatusFound)
+	var errMsg string
+	switch {
+	case username == "" || password == "" || confirm == "":
+		errMsg = "Username, password, and password confirmation are required."
+	case password != confirm:
+		errMsg = "Passwords do not match."
+	}
+	if errMsg != "" {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":    "Setup",
+			"HasAdmin": false,
+			"Error":    errMsg,
+			"Username": username,
+		})
 		return
 	}
 
@@ -187,9 +201,77 @@ func (h *Handlers) SetupAdminPost(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/setup", http.StatusFound)
 }
 
+// parseWireGuardSetupForm parses the generate-path setup form. Numeric fields must be non-empty;
+// validation for ranges is done in wireguard.ValidateSetupConfig.
+func parseWireGuardSetupForm(r *http.Request) (wireguard.SetupConfig, error) {
+	c := wireguard.SetupConfig{
+		ServerHost:         strings.TrimSpace(r.FormValue("server_host")),
+		ServerAddress:      strings.TrimSpace(r.FormValue("server_address")),
+		ClientAddressRange: strings.TrimSpace(r.FormValue("client_address_range")),
+		DNS:                strings.TrimSpace(r.FormValue("dns")),
+		AllowedIPs:         strings.TrimSpace(r.FormValue("allowed_ips")),
+		PreUp:              r.FormValue("pre_up"),
+		PostUp:             r.FormValue("post_up"),
+		PreDown:            r.FormValue("pre_down"),
+		PostDown:           r.FormValue("post_down"),
+		PrivateKey:         strings.TrimSpace(r.FormValue("private_key")),
+		PublicKey:          strings.TrimSpace(r.FormValue("public_key")),
+	}
+	sp := strings.TrimSpace(r.FormValue("server_port"))
+	if sp == "" {
+		return c, errors.New("server port is required")
+	}
+	p, err := strconv.Atoi(sp)
+	if err != nil || p < 1 || p > 65535 {
+		return c, errors.New("server port must be a number between 1 and 65535")
+	}
+	c.ServerPort = p
+
+	mtus := strings.TrimSpace(r.FormValue("mtu"))
+	if mtus == "" {
+		return c, errors.New("MTU is required")
+	}
+	mtu, err := strconv.Atoi(mtus)
+	if err != nil {
+		return c, errors.New("MTU must be a valid number")
+	}
+	c.MTU = mtu
+
+	pks := strings.TrimSpace(r.FormValue("persistent_keepalive"))
+	if pks == "" {
+		return c, errors.New("persistent keepalive is required")
+	}
+	pk, err := strconv.Atoi(pks)
+	if err != nil {
+		return c, errors.New("persistent keepalive must be a valid number")
+	}
+	c.PersistentKeepalive = pk
+	return c, nil
+}
+
+// setupFormEcho returns raw form strings for re-rendering setup after an error (preserves "0", etc.).
+func setupFormEcho(r *http.Request) map[string]string {
+	return map[string]string{
+		"server_host":          strings.TrimSpace(r.FormValue("server_host")),
+		"server_port":          strings.TrimSpace(r.FormValue("server_port")),
+		"server_address":       strings.TrimSpace(r.FormValue("server_address")),
+		"client_address_range": strings.TrimSpace(r.FormValue("client_address_range")),
+		"dns":                  strings.TrimSpace(r.FormValue("dns")),
+		"allowed_ips":          strings.TrimSpace(r.FormValue("allowed_ips")),
+		"mtu":                  strings.TrimSpace(r.FormValue("mtu")),
+		"persistent_keepalive": strings.TrimSpace(r.FormValue("persistent_keepalive")),
+	}
+}
+
+func importSetupFormEcho(r *http.Request) map[string]string {
+	return map[string]string{
+		"server_host": strings.TrimSpace(r.FormValue("server_host")),
+	}
+}
+
 func (h *Handlers) SetupWireGuardPost(w http.ResponseWriter, r *http.Request) {
 	if h.isSetupComplete() {
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		http.Redirect(w, r, "/ui", http.StatusFound)
 		return
 	}
 	if h.svc.Sessions.GetString(r.Context(), "user_id") == "" {
@@ -201,54 +283,48 @@ func (h *Handlers) SetupWireGuardPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := wireguard.SetupConfig{
-		ServerHost:          strings.TrimSpace(r.FormValue("server_host")),
-		ServerPort:          mustAtoi(r.FormValue("server_port"), 51820),
-		ServerAddress:       strings.TrimSpace(r.FormValue("server_address")),
-		ClientAddressRange:  strings.TrimSpace(r.FormValue("client_address_range")),
-		DNS:                 strings.TrimSpace(r.FormValue("dns")),
-		MTU:                 mustAtoi(r.FormValue("mtu"), 1420),
-		PersistentKeepalive: mustAtoi(r.FormValue("persistent_keepalive"), 25),
-		AllowedIPs:          strings.TrimSpace(r.FormValue("allowed_ips")),
-		PreUp:               r.FormValue("pre_up"),
-		PostUp:              r.FormValue("post_up"),
-		PreDown:             r.FormValue("pre_down"),
-		PostDown:            r.FormValue("post_down"),
-		PrivateKey:          strings.TrimSpace(r.FormValue("private_key")),
-		PublicKey:           strings.TrimSpace(r.FormValue("public_key")),
-	}
-	if cfg.DNS == "" {
-		cfg.DNS = "1.1.1.1, 1.0.0.1"
-	}
-	if cfg.AllowedIPs == "" {
-		cfg.AllowedIPs = "0.0.0.0/0, ::/0"
+	cfg, parseErr := parseWireGuardSetupForm(r)
+	if parseErr != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":      "Setup",
+			"HasAdmin":   true,
+			"Error":      parseErr.Error(),
+			"Prefill":    cfg,
+			"Form":       setupFormEcho(r),
+			"PrivateKey": cfg.PrivateKey,
+			"PublicKey":  cfg.PublicKey,
+		})
+		return
 	}
 
 	if err := wireguard.ValidateSetupConfig(cfg); err != nil {
 		view.Render(w, r, "setup.tmpl", view.M{
-			"Title":    "Setup",
-			"HasAdmin": true,
-			"Error":    err.Error(),
-			"Prefill":  cfg,
+			"Title":      "Setup",
+			"HasAdmin":   true,
+			"Error":      err.Error(),
+			"Prefill":    cfg,
+			"Form":       setupFormEcho(r),
+			"PrivateKey": cfg.PrivateKey,
+			"PublicKey":  cfg.PublicKey,
 		})
 		return
 	}
 
 	vpnCfg := map[string]any{
 		"wireGuard": map[string]any{
-			"enabled":            true,
-			"serverHost":         cfg.ServerHost,
-			"serverPort":         cfg.ServerPort,
-			"serverAddress":      cfg.ServerAddress,
-			"clientAddressRange": cfg.ClientAddressRange,
-			"dns":                cfg.DNS,
-			"mtu":                cfg.MTU,
+			"enabled":             true,
+			"serverHost":          cfg.ServerHost,
+			"serverPort":          cfg.ServerPort,
+			"serverAddress":       cfg.ServerAddress,
+			"clientAddressRange":  cfg.ClientAddressRange,
+			"dns":                 cfg.DNS,
+			"mtu":                 cfg.MTU,
 			"persistentKeepalive": cfg.PersistentKeepalive,
-			"allowedIps":         cfg.AllowedIPs,
-			"preUp":              cfg.PreUp,
-			"postUp":             cfg.PostUp,
-			"preDown":            cfg.PreDown,
-			"postDown":           cfg.PostDown,
+			"allowedIps":          cfg.AllowedIPs,
+			"preUp":               cfg.PreUp,
+			"postUp":              cfg.PostUp,
+			"preDown":             cfg.PreDown,
+			"postDown":            cfg.PostDown,
 		},
 	}
 	if err := db.UpsertSystemConfig(h.svc.DB, true, vpnCfg); err != nil {
@@ -266,12 +342,12 @@ func (h *Handlers) SetupWireGuardPost(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
 
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, "/ui", http.StatusFound)
 }
 
 func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Request) {
 	if h.isSetupComplete() {
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		http.Redirect(w, r, "/ui", http.StatusFound)
 		return
 	}
 	if h.svc.Sessions.GetString(r.Context(), "user_id") == "" {
@@ -283,24 +359,34 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 	r.Body = http.MaxBytesReader(w, r.Body, maxSetupUploadBytes)
 	if err := r.ParseMultipartForm(maxSetupUploadBytes); err != nil {
 		view.Render(w, r, "setup.tmpl", view.M{
-			"Title":    "Setup",
-			"HasAdmin": true,
-			"Error":    "Invalid upload (file too large or malformed).",
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"Error":        "Invalid upload (file too large or malformed).",
+			"ImportWizard": true,
 		})
 		return
 	}
 
 	serverHost := strings.TrimSpace(r.FormValue("server_host"))
 	if serverHost == "" {
-		serverHost = "vpn.example.com"
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"Error":        "server host is required",
+			"ImportForm":   importSetupFormEcho(r),
+			"ImportWizard": true,
+		})
+		return
 	}
 
 	wgFile, _, err := r.FormFile("wg0_conf")
 	if err != nil {
 		view.Render(w, r, "setup.tmpl", view.M{
-			"Title":    "Setup",
-			"HasAdmin": true,
-			"Error":    "wg0.conf file is required for import.",
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"Error":        "wg0.conf file is required for import.",
+			"ImportForm":   importSetupFormEcho(r),
+			"ImportWizard": true,
 		})
 		return
 	}
@@ -309,9 +395,11 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 	parsed, err := wireguard.ParseWGQuickConfig(wgFile)
 	if err != nil {
 		view.Render(w, r, "setup.tmpl", view.M{
-			"Title":    "Setup",
-			"HasAdmin": true,
-			"Error":    err.Error(),
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"Error":        err.Error(),
+			"ImportForm":   importSetupFormEcho(r),
+			"ImportWizard": true,
 		})
 		return
 	}
@@ -321,9 +409,11 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 	scriptPaths, err := saveWGHookScripts(dataDir, r)
 	if err != nil {
 		view.Render(w, r, "setup.tmpl", view.M{
-			"Title":    "Setup",
-			"HasAdmin": true,
-			"Error":    err.Error(),
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"Error":        err.Error(),
+			"ImportForm":   importSetupFormEcho(r),
+			"ImportWizard": true,
 		})
 		return
 	}
@@ -346,9 +436,11 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 	publicKey, err := wireguard.DerivePublicKey(privateKey)
 	if err != nil {
 		view.Render(w, r, "setup.tmpl", view.M{
-			"Title":    "Setup",
-			"HasAdmin": true,
-			"Error":    "Invalid server private key in wg0.conf.",
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"Error":        "Invalid server private key in wg0.conf.",
+			"ImportForm":   importSetupFormEcho(r),
+			"ImportWizard": true,
 		})
 		return
 	}
@@ -416,9 +508,11 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 
 	if err := importPeersAsUsers(h.svc.DB, parsed.Peers); err != nil {
 		view.Render(w, r, "setup.tmpl", view.M{
-			"Title":    "Setup",
-			"HasAdmin": true,
-			"Error":    err.Error(),
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"Error":        err.Error(),
+			"ImportForm":   importSetupFormEcho(r),
+			"ImportWizard": true,
 		})
 		return
 	}
@@ -428,7 +522,7 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	_ = wireguard.ApplyConfig(dataDir, h.svc.Config.WGInterface)
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, "/ui", http.StatusFound)
 }
 
 type hookScriptPaths struct {
@@ -584,9 +678,9 @@ func (h *Handlers) LogoutPost(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
-func (h *Handlers) DashboardPage(w http.ResponseWriter, r *http.Request) {
-	view.Render(w, r, "dashboard.tmpl", view.M{
-		"Title": "Dashboard",
+func (h *Handlers) UIPage(w http.ResponseWriter, r *http.Request) {
+	view.Render(w, r, "ui.tmpl", view.M{
+		"Title": "UI",
 		"Now":   time.Now(),
 	})
 }
@@ -644,7 +738,7 @@ func (h *Handlers) OverviewAllPartial(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(h.svc.StartedAt)
 	si := sysInfo{
 		ServerAddress: h.svc.Config.HTTPAddr,
-		Version:       "go-htmx",
+		Version:       version.RevisionShort(),
 		OSName:        runtime.GOOS,
 		Hostname:      hn,
 		UptimeHuman:   humanUptime(uptime),
@@ -709,6 +803,69 @@ func maxInt(a, b int) int {
 	return b
 }
 
+func formatInstantAgo(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	if d < 0 {
+		d = 0
+	}
+	sec := int(d / time.Second)
+	switch {
+	case sec < 1:
+		return "just now"
+	case sec < 60:
+		if sec == 1 {
+			return "1 second ago"
+		}
+		return fmt.Sprintf("%d seconds ago", sec)
+	case sec < 3600:
+		min := sec / 60
+		if min == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", min)
+	case sec < 86400:
+		h := sec / 3600
+		if h == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", h)
+	case sec < 30*86400:
+		day := sec / 86400
+		if day == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", day)
+	default:
+		return t.UTC().Format("Jan 2, 2006")
+	}
+}
+
+func formatTimeAgoFromRFC3339(s string) string {
+	if s == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return ""
+	}
+	return formatInstantAgo(t)
+}
+
+func relativeAgoLastHandshake(lastHS, connectedAt sql.NullString) string {
+	if lastHS.Valid {
+		if a := formatTimeAgoFromRFC3339(strings.TrimSpace(lastHS.String)); a != "" {
+			return a
+		}
+	}
+	if connectedAt.Valid {
+		return formatTimeAgoFromRFC3339(strings.TrimSpace(connectedAt.String))
+	}
+	return ""
+}
+
 func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.svc.DB.Query(`
 		SELECT
@@ -725,6 +882,7 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 			remaining_days,
 			remaining_traffic_bytes,
 			connected_at,
+			last_handshake,
 			peer_icon
 		FROM vpn_users
 		ORDER BY username ASC
@@ -737,20 +895,21 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type userRow struct {
-		ID                   string
-		Username             string
-		IPAddress            string
-		Endpoint             string
-		IsEnabled            bool
-		IsConnected          bool
-		TotalRxBytes         int64
-		TotalTxBytes         int64
-		RemainingDaysValue     int64
-		HasRemainingDays       bool
-		RemainingTrafficBytes  int64
-		HasRemainingTraffic    bool
-		ConnectedAt          string
-		PeerIcon             string
+		ID                    string
+		Username              string
+		IPAddress             string
+		Endpoint              string
+		IsEnabled             bool
+		IsConnected           bool
+		TotalRxBytes          int64
+		TotalTxBytes          int64
+		RemainingDaysValue    int64
+		HasRemainingDays      bool
+		RemainingTrafficBytes int64
+		HasRemainingTraffic   bool
+		ConnectedAt           string
+		LastHandshakeAgo      string
+		PeerIcon              string
 	}
 	var users []userRow
 	for rows.Next() {
@@ -762,6 +921,7 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 		var remainingDays sql.NullInt64
 		var remainingTraffic sql.NullInt64
 		var peerIcon sql.NullString
+		var lastHandshake sql.NullString
 		var bytesRx, bytesTx, totalBytesRx, totalBytesTx int64
 		if err := rows.Scan(
 			&u.ID,
@@ -777,6 +937,7 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 			&remainingDays,
 			&remainingTraffic,
 			&connectedAt,
+			&lastHandshake,
 			&peerIcon,
 		); err != nil {
 			http.Error(w, "server error", http.StatusInternalServerError)
@@ -789,6 +950,7 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 		if connectedAt.Valid {
 			u.ConnectedAt = connectedAt.String
 		}
+		u.LastHandshakeAgo = relativeAgoLastHandshake(lastHandshake, connectedAt)
 		if allowedIPs.Valid {
 			// First IP/CIDR is the peer tunnel address.
 			first := strings.TrimSpace(allowedIPs.String)
@@ -813,6 +975,10 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 		}
 		users = append(users, u)
 	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
 
 	view.Render(w, r, "users.tmpl", view.M{
 		"Title": "Users",
@@ -827,7 +993,7 @@ func (h *Handlers) UserCreatePost(w http.ResponseWriter, r *http.Request) {
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
 	if username == "" {
-		http.Redirect(w, r, "/dashboard/users", http.StatusFound)
+		http.Redirect(w, r, "/ui/users", http.StatusFound)
 		return
 	}
 
@@ -861,13 +1027,18 @@ func (h *Handlers) UserCreatePost(w http.ResponseWriter, r *http.Request) {
 		}
 		privateKey = priv
 		publicKey = pub
-	} else if publicKey == "" {
-		pub, err := wireguard.DerivePublicKey(privateKey)
+	} else {
+		derivedPub, err := wireguard.DerivePublicKey(privateKey)
 		if err != nil {
 			http.Error(w, "invalid private key", http.StatusBadRequest)
 			return
 		}
-		publicKey = pub
+		if publicKey == "" {
+			publicKey = derivedPub
+		} else if publicKey != derivedPub {
+			http.Error(w, "public key mismatch", http.StatusBadRequest)
+			return
+		}
 	}
 	// PSK is optional: only store it if provided/generated by the user.
 
@@ -906,7 +1077,7 @@ func (h *Handlers) UserCreatePost(w http.ResponseWriter, r *http.Request) {
 	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
 
-	http.Redirect(w, r, "/dashboard/users", http.StatusFound)
+	http.Redirect(w, r, "/ui/users", http.StatusFound)
 }
 
 func nullIfEmpty(s string) any {
@@ -970,17 +1141,22 @@ func (h *Handlers) EditUserModalPartial(w http.ResponseWriter, r *http.Request) 
 		remainingDaysStr = strconv.FormatInt(remainingDays.Int64, 10)
 	}
 
+	privStr := strings.TrimSpace(privateKey.String)
+	pubStr := strings.TrimSpace(publicKey.String)
+	importedNoPrivKey := privStr == "" && pubStr != ""
+
 	view.RenderPartial(w, r, "partials/edit_user_modal.tmpl", view.M{
-		"UserID":            id,
-		"Username":          username,
-		"PrivateKey":        strings.TrimSpace(privateKey.String),
-		"PublicKey":         strings.TrimSpace(publicKey.String),
-		"PresharedKey":      strings.TrimSpace(presharedKey.String),
-		"VPNIP":             vpnIP,
-		"AllowedExtra":      allowedExtra,
-		"RemainingDays":     remainingDaysStr,
+		"UserID":             id,
+		"Username":           username,
+		"PrivateKey":         privStr,
+		"PublicKey":          pubStr,
+		"PresharedKey":       strings.TrimSpace(presharedKey.String),
+		"VPNIP":              vpnIP,
+		"AllowedExtra":       allowedExtra,
+		"RemainingDays":      remainingDaysStr,
 		"RemainingTrafficMB": remainingTrafficMB,
-		"IsEnabled":         isEnabled != 0,
+		"IsEnabled":          isEnabled != 0,
+		"ImportedNoPrivKey":  importedNoPrivKey,
 	})
 }
 
@@ -1061,17 +1237,19 @@ func (h *Handlers) UserUpdatePost(w http.ResponseWriter, r *http.Request) {
 
 	if !existingPriv.Valid || strings.TrimSpace(existingPriv.String) == "" {
 		if privateKey != "" {
-			if publicKey == "" {
-				pub, err := wireguard.DerivePublicKey(privateKey)
-				if err != nil {
-					w.Header().Set("HX-Trigger", `{"toast":{"type":"danger","message":"Invalid private key."}}`)
-					http.Error(w, "invalid private key", http.StatusBadRequest)
-					return
-				}
-				publicKey = pub
+			derivedPub, err := wireguard.DerivePublicKey(privateKey)
+			if err != nil {
+				w.Header().Set("HX-Trigger", `{"toast":{"type":"danger","message":"Invalid private key."}}`)
+				http.Error(w, "invalid private key", http.StatusBadRequest)
+				return
+			}
+			if publicKey != "" && publicKey != derivedPub {
+				w.Header().Set("HX-Trigger", `{"toast":{"type":"danger","message":"Public key does not match this private key."}}`)
+				http.Error(w, "public key mismatch", http.StatusBadRequest)
+				return
 			}
 			updatePriv = privateKey
-			updatePub = publicKey
+			updatePub = derivedPub
 		}
 	}
 	if !existingPSK.Valid || strings.TrimSpace(existingPSK.String) == "" {
@@ -1188,13 +1366,34 @@ func (h *Handlers) UserQRModalPartial(w http.ResponseWriter, r *http.Request) {
 
 	conf, filename, err := wireguard.RenderClientConfig(h.svc.DB, id)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+
+		var username string
+		var pub sql.NullString
+		_ = h.svc.DB.QueryRow(`SELECT username, public_key FROM vpn_users WHERE id = ? LIMIT 1`, id).Scan(&username, &pub)
+		hasPeerKey := pub.Valid && strings.TrimSpace(pub.String) != ""
+
+		if errors.Is(err, wireguard.ErrNoClientPrivateKey) {
+			view.RenderPartial(w, r, "partials/qr_modal_unavailable.tmpl", view.M{
+				"Username": username,
+				"IsImport": hasPeerKey,
+			})
+			return
+		}
+
+		view.RenderPartial(w, r, "partials/qr_modal_unavailable.tmpl", view.M{
+			"Username": username,
+			"Detail":   "The client configuration could not be built. Check server WireGuard settings and that this user has a tunnel address.",
+		})
 		return
 	}
 
 	var (
-		username   string
-		allowed    sql.NullString
+		username string
+		allowed  sql.NullString
 	)
 	_ = h.svc.DB.QueryRow(`SELECT username, allowed_ips FROM vpn_users WHERE id = ? LIMIT 1`, id).Scan(&username, &allowed)
 	ip := ""
@@ -1220,12 +1419,12 @@ func (h *Handlers) UserQRModalPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view.RenderPartial(w, r, "partials/qr_modal.tmpl", view.M{
-		"UserID":    id,
-		"Username":  username,
-		"Server":    serverName,
-		"Protocol":  strings.ToUpper(protocol),
-		"IP":        ip,
-		"FileName":  filename,
+		"UserID":     id,
+		"Username":   username,
+		"Server":     serverName,
+		"Protocol":   strings.ToUpper(protocol),
+		"IP":         ip,
+		"FileName":   filename,
 		"ConfigText": conf,
 	})
 }
@@ -1285,7 +1484,7 @@ func (h *Handlers) UsersNextIPAPI(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) UserTogglePost(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		http.Redirect(w, r, "/dashboard/users", http.StatusFound)
+		http.Redirect(w, r, "/ui/users", http.StatusFound)
 		return
 	}
 	_, err := h.svc.DB.Exec(`
@@ -1301,7 +1500,7 @@ func (h *Handlers) UserTogglePost(w http.ResponseWriter, r *http.Request) {
 	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
 
-	http.Redirect(w, r, "/dashboard/users", http.StatusFound)
+	http.Redirect(w, r, "/ui/users", http.StatusFound)
 }
 
 func (h *Handlers) UserConfigGet(w http.ResponseWriter, r *http.Request) {
@@ -1369,12 +1568,6 @@ func (h *Handlers) ServersPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handlers) ActivityPage(w http.ResponseWriter, r *http.Request) {
-	view.Render(w, r, "activity.tmpl", view.M{
-		"Title": "Activity",
-	})
-}
-
 func (h *Handlers) WireGuardPage(w http.ResponseWriter, r *http.Request) {
 	cfg, server, live, hostUp, tunUp, err := wireguard.LoadWireGuardState(h.svc.DB, h.svc.Config.WGInterface, h.svc.StartedAt)
 	if err != nil {
@@ -1389,14 +1582,14 @@ func (h *Handlers) WireGuardPage(w http.ResponseWriter, r *http.Request) {
 	msgType := strings.TrimSpace(r.URL.Query().Get("msgType"))
 
 	view.Render(w, r, "wireguard.tmpl", view.M{
-		"Title":             "Wireguard",
-		"WGConfig":          cfg,
-		"WGServer":          server,
-		"WGLive":            live,
-		"HostUptimeSeconds": hostUp,
+		"Title":               "Wireguard",
+		"WGConfig":            cfg,
+		"WGServer":            server,
+		"WGLive":              live,
+		"HostUptimeSeconds":   hostUp,
 		"TunnelUptimeSeconds": tunUp,
-		"SaveMessage":       msg,
-		"SaveMessageType":   msgType,
+		"SaveMessage":         msg,
+		"SaveMessageType":     msgType,
 	})
 }
 
@@ -1414,36 +1607,36 @@ func (h *Handlers) WireGuardSavePost(w http.ResponseWriter, r *http.Request) {
 	update := wireguard.WireGuardUpdate{
 		ServerPrivateKey: strings.TrimSpace(r.FormValue("server_private_key")),
 		Config: wireguard.WireGuardConfig{
-			Enabled:            true,
-			ServerHost:         strings.TrimSpace(r.FormValue("server_host")),
-			ServerPort:         mustAtoi(r.FormValue("server_port"), 51820),
-			ServerAddress:      strings.TrimSpace(r.FormValue("server_address")),
-			ClientAddressRange: strings.TrimSpace(r.FormValue("client_address_range")),
-			DNS:                strings.TrimSpace(r.FormValue("dns")),
-			MTU:                mustAtoi(r.FormValue("mtu"), 1420),
+			Enabled:             true,
+			ServerHost:          strings.TrimSpace(r.FormValue("server_host")),
+			ServerPort:          mustAtoi(r.FormValue("server_port"), 51820),
+			ServerAddress:       strings.TrimSpace(r.FormValue("server_address")),
+			ClientAddressRange:  strings.TrimSpace(r.FormValue("client_address_range")),
+			DNS:                 strings.TrimSpace(r.FormValue("dns")),
+			MTU:                 mustAtoi(r.FormValue("mtu"), 1420),
 			PersistentKeepalive: mustAtoi(r.FormValue("persistent_keepalive"), 25),
-			AllowedIPs:         strings.TrimSpace(r.FormValue("allowed_ips")),
-			PreUp:              r.FormValue("pre_up"),
-			PostUp:             r.FormValue("post_up"),
-			PreDown:            r.FormValue("pre_down"),
-			PostDown:           r.FormValue("post_down"),
+			AllowedIPs:          strings.TrimSpace(r.FormValue("allowed_ips")),
+			PreUp:               r.FormValue("pre_up"),
+			PostUp:              r.FormValue("post_up"),
+			PreDown:             r.FormValue("pre_down"),
+			PostDown:            r.FormValue("post_down"),
 		},
 	}
 	res, err := wireguard.SaveWireGuardState(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface, update)
 	if err != nil {
-		http.Redirect(w, r, "/dashboard/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, "/dashboard/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
+	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
 }
 
 func (h *Handlers) WireGuardReloadPost(w http.ResponseWriter, r *http.Request) {
 	res, err := wireguard.ReloadWireGuard(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface)
 	if err != nil {
-		http.Redirect(w, r, "/dashboard/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, "/dashboard/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
+	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
 }
 
 func (h *Handlers) WireGuardAPIGet(w http.ResponseWriter, r *http.Request) {
@@ -1465,7 +1658,7 @@ func (h *Handlers) WireGuardAPIGet(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) WireGuardAPIPut(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Config           wireguard.WireGuardConfig `json:"config"`
-		ServerPrivateKey string                  `json:"serverPrivateKey"`
+		ServerPrivateKey string                    `json:"serverPrivateKey"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, `{"error":"bad json"}`, http.StatusBadRequest)
@@ -1481,8 +1674,8 @@ func (h *Handlers) WireGuardAPIPut(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"message":         res.Text,
-		"wireGuardWriteOk": res.WroteConfig,
+		"message":           res.Text,
+		"wireGuardWriteOk":  res.WroteConfig,
 		"wireGuardReloaded": res.Applied,
 	})
 }
@@ -1503,11 +1696,11 @@ func (h *Handlers) BandwidthHistoryAPI(w http.ResponseWriter, r *http.Request) {
 		UploadRate   int64  `json:"uploadRate"`
 	}
 	type dailyPoint struct {
-		Day          int    `json:"day"`
-		Timestamp    string `json:"timestamp"`
-		DownloadTotal int64 `json:"downloadTotal"`
-		UploadTotal   int64 `json:"uploadTotal"`
-		CombinedTotal int64 `json:"combinedTotal"`
+		Day           int    `json:"day"`
+		Timestamp     string `json:"timestamp"`
+		DownloadTotal int64  `json:"downloadTotal"`
+		UploadTotal   int64  `json:"uploadTotal"`
+		CombinedTotal int64  `json:"combinedTotal"`
 	}
 
 	now := time.Now()
@@ -1633,7 +1826,7 @@ func (h *Handlers) BandwidthHistoryAPI(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`}`))
 }
 
-func (h *Handlers) DashboardStatsPartial(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) UIStatsPartial(w http.ResponseWriter, r *http.Request) {
 	type stats struct {
 		TotalUsers     int
 		EnabledUsers   int
@@ -1646,17 +1839,19 @@ func (h *Handlers) DashboardStatsPartial(w http.ResponseWriter, r *http.Request)
 	_ = h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_users WHERE is_connected = 1`).Scan(&s.ConnectedUsers)
 	_ = h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_servers WHERE is_active = 1`).Scan(&s.ActiveServers)
 
-	view.RenderPartial(w, r, "partials/dashboard_stats.tmpl", view.M{
+	view.RenderPartial(w, r, "partials/ui_stats.tmpl", view.M{
 		"Stats": s,
 	})
 }
 
 func (h *Handlers) ActiveConnectionsPartial(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.svc.DB.Query(`
-		SELECT username, endpoint, last_handshake, bytes_received_rate, bytes_sent_rate, connected_at
-		FROM vpn_users
-		WHERE is_connected = 1 AND is_enabled = 1
-		ORDER BY connected_at DESC
+		SELECT u.username, u.endpoint, u.last_handshake, u.total_bytes_received, u.total_bytes_sent,
+		  s.name, s.protocol, s.port
+		FROM vpn_users u
+		LEFT JOIN vpn_servers s ON s.id = u.server_id
+		WHERE u.is_connected = 1 AND u.is_enabled = 1
+		ORDER BY u.connected_at DESC
 		LIMIT 200
 	`)
 	if err != nil {
@@ -1666,31 +1861,51 @@ func (h *Handlers) ActiveConnectionsPartial(w http.ResponseWriter, r *http.Reque
 	defer rows.Close()
 
 	type row struct {
-		Username      string
-		Endpoint      string
-		LastHandshake string
-		RxRate        int64
-		TxRate        int64
-		ConnectedAt   string
+		Username       string
+		Endpoint       string
+		LastHandshake  string
+		TotalRx        int64
+		TotalTx        int64
+		ServerTitle    string
+		ServerSubtitle string
 	}
 	var out []row
 	for rows.Next() {
-		var r row
-		var endpoint, hs, ca sql.NullString
-		if err := rows.Scan(&r.Username, &endpoint, &hs, &r.RxRate, &r.TxRate, &ca); err != nil {
+		var rec row
+		var endpoint, hs sql.NullString
+		var serverName, serverProto sql.NullString
+		var serverPort sql.NullInt64
+		if err := rows.Scan(
+			&rec.Username, &endpoint, &hs,
+			&rec.TotalRx, &rec.TotalTx,
+			&serverName, &serverProto, &serverPort,
+		); err != nil {
 			http.Error(w, "server error", http.StatusInternalServerError)
 			return
 		}
 		if endpoint.Valid {
-			r.Endpoint = endpoint.String
+			rec.Endpoint = endpoint.String
 		}
 		if hs.Valid {
-			r.LastHandshake = hs.String
+			rec.LastHandshake = hs.String
 		}
-		if ca.Valid {
-			r.ConnectedAt = ca.String
+		rec.ServerTitle = "WireGuard Server"
+		if serverName.Valid && strings.TrimSpace(serverName.String) != "" {
+			rec.ServerTitle = strings.TrimSpace(serverName.String)
 		}
-		out = append(out, r)
+		proto := "wireguard"
+		if serverProto.Valid && strings.TrimSpace(serverProto.String) != "" {
+			proto = strings.TrimSpace(serverProto.String)
+		}
+		rec.ServerSubtitle = strings.ToUpper(proto)
+		if serverPort.Valid {
+			rec.ServerSubtitle += fmt.Sprintf(" • Port %d", serverPort.Int64)
+		}
+		out = append(out, rec)
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
 	}
 
 	view.RenderPartial(w, r, "partials/active_connections.tmpl", view.M{
@@ -1701,4 +1916,3 @@ func (h *Handlers) ActiveConnectionsPartial(w http.ResponseWriter, r *http.Reque
 func intToString(n int) string {
 	return strconv.Itoa(n)
 }
-

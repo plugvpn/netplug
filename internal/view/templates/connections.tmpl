@@ -7,9 +7,11 @@
   {{template "page_header.tmpl" .}}
   <div class="flex-1 overflow-y-auto">
     <div class="p-8">
-      <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div
+        class="rounded border border-[rgba(148,163,184,0.055)] bg-[var(--np-panel)]"
+      >
         <div
-          hx-get="/partials/dashboard/active-connections"
+          hx-get="/partials/ui/active-connections"
           hx-trigger="load, every 10s"
           hx-swap="innerHTML"
         ></div>

@@ -19,6 +19,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"netplug-go/internal/app"
+	"netplug-go/internal/assets"
 	"netplug-go/internal/db"
 	"netplug-go/internal/wireguard"
 )
@@ -74,6 +75,7 @@ func main() {
 
 	fs := http.FileServer(http.Dir(filepath.Join(cfg.ProjectRoot, "web", "static")))
 	r.Handle("/static/*", http.StripPrefix("/static/", fs))
+	r.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	// Backwards-compatible asset path (from the original UI).
 	r.Get("/plug-icon.png", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(cfg.ProjectRoot, "web", "static", "plug-icon.png"))
@@ -95,7 +97,7 @@ func main() {
 	defer wgSync.Stop()
 
 	// Best-effort: if WireGuard is configured+enabled, bring the interface up on startup.
-	// This should not prevent the dashboard from starting (e.g. during initial setup, or when wg tools aren't available).
+	// This should not prevent the UI from starting (e.g. during initial setup, or when wg tools aren't available).
 	if _, _, _, _, _, err := wireguard.LoadWireGuardState(sqlDB, cfg.WGInterface, svc.StartedAt); err == nil {
 		if res, err := wireguard.ReloadWireGuard(sqlDB, cfg.DataDir, cfg.WGInterface); err != nil {
 			log.Printf("wireguard startup: failed to apply config: %v", err)

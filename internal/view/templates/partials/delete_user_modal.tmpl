@@ -7,14 +7,14 @@
     hx-swap="innerHTML"
   ></div>
 
-  <div class="relative w-full max-w-md rounded-xl border border-gray-800 bg-gray-900 shadow-2xl overflow-hidden">
-    <div class="flex items-start justify-between border-b border-gray-800 px-6 py-4">
+  <div class="relative w-full max-w-md rounded-md border border-[rgba(148,163,184,0.06)] bg-[var(--np-panel)] shadow-none overflow-hidden">
+    <div class="flex items-start justify-between border-b border-[rgba(148,163,184,0.055)] px-6 py-4">
       <div>
         <div class="text-sm font-semibold text-gray-100">Delete User</div>
         <div class="text-xs text-gray-400">This action cannot be undone</div>
       </div>
       <button
-        class="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+        class="rounded p-1.5 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200"
         hx-get="/partials/empty"
         hx-target="#modal-root"
         hx-swap="innerHTML"
@@ -25,7 +25,7 @@
     </div>
 
     <div class="px-6 py-5">
-      <div class="rounded-lg border border-red-900/40 bg-red-950/30 p-4">
+      <div class="rounded border border-red-900/35 bg-red-950/25 p-4">
         <div class="flex items-start gap-3">
           <div class="mt-0.5 rounded-full bg-red-500/10 p-2 text-red-300">
             <i data-lucide="triangle-alert" class="h-4 w-4" style="stroke-width:1.5"></i>
@@ -42,14 +42,14 @@
       <form
         class="mt-5 flex items-center gap-3"
         method="post"
-        action="/dashboard/users/{{.UserID}}/delete"
-        hx-post="/dashboard/users/{{.UserID}}/delete"
+        action="/ui/users/{{.UserID}}/delete"
+        hx-post="/ui/users/{{.UserID}}/delete"
         hx-target="#modal-root"
         hx-swap="innerHTML"
       >
         <button
           type="button"
-          class="flex-1 h-9 rounded border border-gray-700 bg-gray-900 text-sm text-gray-200 hover:bg-gray-800"
+          class="flex-1 h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#152031] text-sm text-gray-200 hover:bg-[#1e2d42]"
           hx-get="/partials/empty"
           hx-target="#modal-root"
           hx-swap="innerHTML"

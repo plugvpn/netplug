@@ -5,207 +5,322 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Setup</title>
-    <script src="https://unpkg.com/htmx.org@2.0.6"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/assets/app.css" />
+    <script src="/assets/htmx.min.js"></script>
   </head>
-  <body class="bg-slate-950 text-slate-100 min-h-screen px-4 py-10">
+  <body class="bg-slate-950 text-slate-100 min-h-screen px-4 py-10 antialiased">
     <div class="max-w-3xl mx-auto">
       <div class="mb-8">
-        <div class="text-2xl font-semibold">NetPlug setup</div>
-        <div class="text-slate-400 text-sm">Create an admin and configure WireGuard.</div>
+        <div class="flex items-center gap-4">
+          <img src="/plug-icon.png" alt="NetPlug" width="44" height="44" class="h-11 w-11 shrink-0 rounded-full ring-1 ring-slate-700" />
+          <div class="min-w-0">
+            <div class="text-2xl font-semibold tracking-tight">NetPlug setup</div>
+            <div class="text-slate-400 text-sm mt-1">Two quick steps — admin account, then WireGuard.</div>
+          </div>
+        </div>
       </div>
 
       {{if .Error}}
-      <div class="mb-5 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded p-3">{{.Error}}</div>
+      <div class="mb-5 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded-lg p-3">{{.Error}}</div>
       {{end}}
 
-      <div class="grid grid-cols-1 gap-6">
-        <div class="bg-slate-900/60 border border-slate-800 rounded-lg p-6">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <div class="text-lg font-semibold">1) Admin account</div>
-              <div class="text-slate-400 text-sm">Only created once.</div>
-            </div>
-            {{if .HasAdmin}}
-              <div class="text-emerald-300 text-sm">Done</div>
-            {{end}}
+      <!-- Step indicator -->
+      <nav class="mb-8 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-0" aria-label="Setup steps">
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 {{if not .HasAdmin}}border-slate-600 bg-slate-800/80 text-slate-200{{else}}border-slate-500 bg-slate-900 text-slate-200{{end}} text-sm font-semibold" aria-current="{{if not .HasAdmin}}step{{end}}">
+            {{if .HasAdmin}}✓{{else}}1{{end}}
           </div>
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-slate-100">Admin account</div>
+            <div class="text-xs text-slate-500 truncate">Required to sign in and manage NetPlug</div>
+          </div>
+        </div>
+        <div class="hidden sm:block w-px self-stretch bg-slate-800 mx-2 shrink-0" aria-hidden="true"></div>
+        <div class="flex items-center gap-3 flex-1 min-w-0 {{if not .HasAdmin}}opacity-40{{end}}">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 {{if .HasAdmin}}border-slate-600 bg-slate-800/80 text-slate-200{{else}}border-slate-700 bg-slate-950 text-slate-500{{end}} text-sm font-semibold" aria-current="{{if .HasAdmin}}step{{end}}">
+            2
+          </div>
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-slate-100">WireGuard</div>
+            <div class="text-xs text-slate-500 truncate">Generate or import <span class="font-mono">wg0.conf</span></div>
+          </div>
+        </div>
+      </nav>
 
-          {{if not .HasAdmin}}
-          <form method="post" action="/setup/admin" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <input name="username" placeholder="username" class="bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-            <input name="password" type="password" placeholder="password" class="bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-            <input name="confirm_password" type="password" placeholder="confirm" class="bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-            <div class="sm:col-span-3">
-              <button class="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 font-medium">Create admin</button>
-            </div>
-          </form>
-          {{else}}
-          <div class="text-slate-300 text-sm">Admin exists. Continue below.</div>
-          {{end}}
+      {{if not .HasAdmin}}
+      <!-- Step 1 only -->
+      <div class="bg-slate-900/45 border border-slate-800/70 rounded p-6 sm:p-8">
+        <div class="mb-6">
+          <h1 class="text-lg font-semibold text-white">Step 1 — Create the administrator</h1>
+          <p class="mt-2 text-sm text-slate-400 leading-relaxed">
+            This step is <span class="text-slate-300 font-medium">mandatory</span>: NetPlug needs a local administrator so you can sign in to the UI, manage VPN users, and change server settings.
+            Without this account you cannot finish setup or use the control panel. It is created once and stored in your local database.
+          </p>
         </div>
 
-        <div class="bg-slate-900/60 border border-slate-800 rounded-lg p-6">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <div class="text-lg font-semibold">2) WireGuard</div>
-              <div class="text-slate-400 text-sm">Generate a new <code class="text-slate-200">wg0.conf</code>, or import an existing one.</div>
-            </div>
+        <form method="post" action="/setup/admin" class="space-y-4">
+          <div>
+            <label for="setup-username" class="block text-xs font-medium text-slate-400 mb-1.5">Username</label>
+            <input id="setup-username" name="username" type="text" autocomplete="username" value="{{if .Username}}{{.Username}}{{end}}" required
+              placeholder="Choose a username"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
           </div>
-
-          <div class="mb-4">
-            <div class="inline-flex rounded-lg bg-slate-950/60 border border-slate-800 p-1">
-              <button id="wg-mode-generate" type="button" class="px-3 py-1.5 rounded-md text-sm font-medium bg-slate-800 text-slate-100">
-                Generate
-              </button>
-              <button id="wg-mode-import" type="button" class="px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-slate-100">
-                Import <span class="font-mono text-xs">wg0.conf</span>
-              </button>
-            </div>
+          <div>
+            <label for="setup-password" class="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+            <input id="setup-password" name="password" type="password" autocomplete="new-password" required
+              placeholder="Password"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
           </div>
-
-          <div id="wg-generate-panel" class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div class="text-sm text-slate-400">Creates a fresh server config and stores it in your data dir.</div>
-              <button
-                class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sm"
-                hx-post="/setup/wireguard/generate-keys"
-                hx-target="#setup-keys"
-                hx-swap="innerHTML"
-                type="button"
-              >
-                Generate keys
-              </button>
-            </div>
-
-            <form method="post" action="/setup/wireguard" class="space-y-4">
-              <div id="setup-keys">
-                {{template "partials/setup_keys.tmpl" .}}
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">Server host</label>
-                  <input name="server_host" value="{{if .Prefill}}{{.Prefill.ServerHost}}{{else}}vpn.example.com{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">Server port</label>
-                  <input name="server_port" value="{{if .Prefill}}{{.Prefill.ServerPort}}{{else}}51820{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">Server address</label>
-                  <input name="server_address" value="{{if .Prefill}}{{.Prefill.ServerAddress}}{{else}}10.8.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">Client CIDR</label>
-                  <input name="client_address_range" value="{{if .Prefill}}{{.Prefill.ClientAddressRange}}{{else}}10.8.0.0/24{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-                <div class="sm:col-span-2">
-                  <label class="block text-xs text-slate-400 mb-1">DNS</label>
-                  <input name="dns" value="{{if .Prefill}}{{.Prefill.DNS}}{{else}}1.1.1.1, 1.0.0.1{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-                <div class="sm:col-span-2">
-                  <label class="block text-xs text-slate-400 mb-1">Allowed IPs</label>
-                  <input name="allowed_ips" value="{{if .Prefill}}{{.Prefill.AllowedIPs}}{{else}}0.0.0.0/0, ::/0{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">MTU</label>
-                  <input name="mtu" value="{{if .Prefill}}{{.Prefill.MTU}}{{else}}1420{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">Persistent keepalive</label>
-                  <input name="persistent_keepalive" value="{{if .Prefill}}{{.Prefill.PersistentKeepalive}}{{else}}25{{end}}" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-              </div>
-
-              <button class="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-medium" {{if not .HasAdmin}}disabled{{end}}>
-                Complete setup
-              </button>
-            </form>
+          <div>
+            <label for="setup-confirm" class="block text-xs font-medium text-slate-400 mb-1.5">Confirm password</label>
+            <input id="setup-confirm" name="confirm_password" type="password" autocomplete="new-password" required
+              placeholder="Re-enter password"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
           </div>
-
-          <div id="wg-import-panel" class="hidden space-y-4">
-            <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
-              <div class="text-sm font-medium text-slate-100 mb-1">Import existing configuration</div>
-              <div class="text-xs text-slate-400">
-                Upload <span class="font-mono">wg0.conf</span>. Peers are imported as VPN users. If a peer block includes <span class="font-mono"># User: name</span>, that name is used; otherwise the peer VPN IP is used.
-              </div>
-            </div>
-
-            <form method="post" action="/setup/wireguard/import" enctype="multipart/form-data" class="space-y-4">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div class="sm:col-span-2">
-                  <label class="block text-xs text-slate-400 mb-1">Server host (for client configs)</label>
-                  <input name="server_host" value="vpn.example.com" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2" />
-                </div>
-
-                <div class="sm:col-span-2">
-                  <label class="block text-xs text-slate-400 mb-1">WireGuard config</label>
-                  <div class="border border-slate-800 bg-slate-950 rounded-lg p-3">
-                    <input name="wg0_conf" type="file" accept=".conf,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" required />
-                    <div class="mt-2 text-xs text-slate-500">File should include <span class="font-mono">[Interface]</span> with <span class="font-mono">PrivateKey</span> and one or more <span class="font-mono">[Peer]</span> blocks.</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div class="sm:col-span-2">
-                  <div class="text-sm font-medium text-slate-200">Hook scripts (optional)</div>
-                  <div class="text-xs text-slate-400">Upload a <span class="font-mono">.sh</span> file and it will be referenced in <span class="font-mono">wg0.conf</span> as the corresponding hook.</div>
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">PreUp (.sh)</label>
-                  <input name="pre_up_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">PostUp (.sh)</label>
-                  <input name="post_up_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">PreDown (.sh)</label>
-                  <input name="pre_down_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">PostDown (.sh)</label>
-                  <input name="post_down_script" type="file" accept=".sh,text/x-shellscript,text/plain" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
-                </div>
-              </div>
-
-              <button class="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-medium" {{if not .HasAdmin}}disabled{{end}}>
-                Import & complete setup
-              </button>
-            </form>
-          </div>
-
-          <script>
-            (function () {
-              var genBtn = document.getElementById('wg-mode-generate');
-              var impBtn = document.getElementById('wg-mode-import');
-              var genPanel = document.getElementById('wg-generate-panel');
-              var impPanel = document.getElementById('wg-import-panel');
-              if (!genBtn || !impBtn || !genPanel || !impPanel) return;
-
-              function setMode(mode) {
-                var isGen = mode === 'generate';
-                genPanel.classList.toggle('hidden', !isGen);
-                impPanel.classList.toggle('hidden', isGen);
-                genBtn.classList.toggle('bg-slate-800', isGen);
-                genBtn.classList.toggle('text-slate-100', isGen);
-                genBtn.classList.toggle('text-slate-300', !isGen);
-                impBtn.classList.toggle('bg-slate-800', !isGen);
-                impBtn.classList.toggle('text-slate-100', !isGen);
-                impBtn.classList.toggle('text-slate-300', isGen);
-              }
-
-              genBtn.addEventListener('click', function(){ setMode('generate'); });
-              impBtn.addEventListener('click', function(){ setMode('import'); });
-              setMode('generate');
-            })();
-          </script>
-        </div>
+          <button type="submit" class="w-full sm:w-auto flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-5 py-2.5 font-semibold text-white transition-colors hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+            Continue
+          </button>
+        </form>
       </div>
+
+      {{else}}
+      <!-- Step 2 only -->
+      <div class="bg-slate-900/45 border border-slate-800/70 rounded p-6 sm:p-8">
+        <div class="mb-6">
+          <h1 class="text-lg font-semibold text-white">Step 2 — WireGuard configuration</h1>
+          <p class="mt-2 text-sm text-slate-400 leading-relaxed">
+            Generate a new <code class="text-slate-200 font-mono text-xs bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">wg0.conf</code> with fresh keys and settings,
+            or import an existing <span class="font-mono text-xs">wg0.conf</span> if you are migrating from another install.
+          </p>
+        </div>
+
+        <div class="mb-4">
+          <div class="inline-flex rounded-lg bg-slate-950/60 border border-slate-800 p-1">
+            <button id="wg-mode-generate" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium bg-slate-800 text-slate-100">
+              Generate
+            </button>
+            <button id="wg-mode-import" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-slate-100 transition-colors">
+              Import <span class="font-mono text-xs">wg0.conf</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="wg-generate-panel" class="space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="text-sm text-slate-400">Creates a fresh server config and stores it in your data dir.</div>
+            <button
+              class="px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-800 hover:bg-slate-700 text-sm text-slate-200"
+              hx-post="/setup/wireguard/generate-keys"
+              hx-target="#setup-keys"
+              hx-swap="innerHTML"
+              type="button"
+            >
+              Generate keys
+            </button>
+          </div>
+
+          <form method="post" action="/setup/wireguard" class="space-y-4">
+            <div id="setup-keys">
+              {{template "partials/setup_keys.tmpl" .}}
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1" for="wg-server-host">Server host</label>
+                <input id="wg-server-host" name="server_host" type="text" required
+                  value="{{if .Form}}{{index .Form "server_host"}}{{end}}"
+                  placeholder="vpn.example.com"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1" for="wg-server-port">Server port</label>
+                <input id="wg-server-port" name="server_port" type="text" inputmode="numeric" pattern="[0-9]*" required
+                  value="{{if .Form}}{{index .Form "server_port"}}{{end}}"
+                  placeholder="51820"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1" for="wg-server-address">Server address</label>
+                <input id="wg-server-address" name="server_address" type="text" required
+                  value="{{if .Form}}{{index .Form "server_address"}}{{end}}"
+                  placeholder="10.8.0.1"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1" for="wg-client-range">Client CIDR</label>
+                <input id="wg-client-range" name="client_address_range" type="text" required
+                  value="{{if .Form}}{{index .Form "client_address_range"}}{{end}}"
+                  placeholder="10.8.0.0/24"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1" for="wg-dns">DNS</label>
+                <input id="wg-dns" name="dns" type="text" required
+                  value="{{if .Form}}{{index .Form "dns"}}{{end}}"
+                  placeholder="1.1.1.1, 1.0.0.1"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1" for="wg-allowed-ips">Allowed IPs</label>
+                <input id="wg-allowed-ips" name="allowed_ips" type="text" required
+                  value="{{if .Form}}{{index .Form "allowed_ips"}}{{end}}"
+                  placeholder="0.0.0.0/0, ::/0"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1" for="wg-mtu">MTU</label>
+                <input id="wg-mtu" name="mtu" type="text" inputmode="numeric" pattern="[0-9]*" required
+                  value="{{if .Form}}{{index .Form "mtu"}}{{end}}"
+                  placeholder="1420"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1" for="wg-keepalive">Persistent keepalive</label>
+                <input id="wg-keepalive" name="persistent_keepalive" type="text" inputmode="numeric" pattern="[0-9]*" required
+                  value="{{if .Form}}{{index .Form "persistent_keepalive"}}{{end}}"
+                  placeholder="25"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+            </div>
+
+            <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-600 py-2.5 font-semibold text-white transition-colors hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+              Complete setup
+            </button>
+          </form>
+        </div>
+
+        <div id="wg-import-panel" class="hidden space-y-4">
+          <div class="rounded border border-[rgba(148,163,184,0.055)] bg-slate-950/35 p-4">
+            <div class="text-sm font-medium text-slate-100 mb-1">Import existing configuration</div>
+            <div class="text-xs text-slate-400">
+              Upload <span class="font-mono">wg0.conf</span>. Peers are imported as VPN users. If a peer block includes <span class="font-mono"># User: name</span>, that name is used; otherwise the peer VPN IP is used.
+            </div>
+          </div>
+
+          <form method="post" action="/setup/wireguard/import" id="wg-import-form" enctype="multipart/form-data" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1" for="import-server-host">Server host (for client configs)</label>
+                <input id="import-server-host" name="server_host" type="text" required
+                  value="{{if .ImportForm}}{{index .ImportForm "server_host"}}{{end}}"
+                  placeholder="vpn.example.com"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1" for="import-wg0-conf">WireGuard config</label>
+                <div class="border border-[rgba(148,163,184,0.055)] bg-slate-950 rounded p-3">
+                  <input id="import-wg0-conf" name="wg0_conf" type="file" accept=".conf,text/plain" required
+                    class="block w-full text-sm text-slate-400 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                  <div class="mt-2 text-xs text-slate-500">File should include <span class="font-mono">[Interface]</span> with <span class="font-mono">PrivateKey</span> and one or more <span class="font-mono">[Peer]</span> blocks.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded border border-[rgba(148,163,184,0.055)] bg-slate-950/25 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div class="text-sm font-medium text-slate-200">Hook scripts</div>
+                  <div class="text-xs text-slate-500 mt-1">Upload <span class="font-mono">.sh</span> hooks to embed in <span class="font-mono">wg0.conf</span> (optional).</div>
+                </div>
+                <button type="button" id="wg-import-hooks-toggle" aria-expanded="false"
+                  class="shrink-0 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700">
+                  Add hook scripts
+                </button>
+              </div>
+              <div id="wg-import-hook-scripts-panel" class="mt-4 hidden grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-800 pt-4">
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1" for="import-pre-up">PreUp (.sh)</label>
+                  <input id="import-pre-up" name="pre_up_script" type="file" disabled accept=".sh,text/x-shellscript,text/plain"
+                    class="block w-full text-sm text-slate-400 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1" for="import-post-up">PostUp (.sh)</label>
+                  <input id="import-post-up" name="post_up_script" type="file" disabled accept=".sh,text/x-shellscript,text/plain"
+                    class="block w-full text-sm text-slate-400 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1" for="import-pre-down">PreDown (.sh)</label>
+                  <input id="import-pre-down" name="pre_down_script" type="file" disabled accept=".sh,text/x-shellscript,text/plain"
+                    class="block w-full text-sm text-slate-400 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1" for="import-post-down">PostDown (.sh)</label>
+                  <input id="import-post-down" name="post_down_script" type="file" disabled accept=".sh,text/x-shellscript,text/plain"
+                    class="block w-full text-sm text-slate-400 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700" />
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-600 py-2.5 font-semibold text-white transition-colors hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+              Import & complete setup
+            </button>
+          </form>
+        </div>
+
+        <script>
+          (function () {
+            var genBtn = document.getElementById('wg-mode-generate');
+            var impBtn = document.getElementById('wg-mode-import');
+            var genPanel = document.getElementById('wg-generate-panel');
+            var impPanel = document.getElementById('wg-import-panel');
+            if (!genBtn || !impBtn || !genPanel || !impPanel) return;
+
+            function setMode(mode) {
+              var isGen = mode === 'generate';
+              genPanel.classList.toggle('hidden', !isGen);
+              impPanel.classList.toggle('hidden', isGen);
+              genBtn.classList.toggle('bg-slate-800', isGen);
+              genBtn.classList.toggle('text-slate-100', isGen);
+              genBtn.classList.toggle('text-slate-300', !isGen);
+              impBtn.classList.toggle('bg-slate-800', !isGen);
+              impBtn.classList.toggle('text-slate-100', !isGen);
+              impBtn.classList.toggle('text-slate-300', isGen);
+            }
+
+            genBtn.addEventListener('click', function(){ setMode('generate'); });
+            impBtn.addEventListener('click', function(){ setMode('import'); });
+            {{- if .ImportWizard}}
+            setMode('import');
+            {{- else}}
+            setMode('generate');
+            {{- end}}
+
+            document.body.addEventListener('click', function (e) {
+              var tb = e.target.closest('#setup-privkey-toggle');
+              if (!tb) return;
+              var inp = document.getElementById('setup_private_key');
+              if (!inp) return;
+              var showPlain = inp.type === 'password';
+              inp.type = showPlain ? 'text' : 'password';
+              tb.textContent = showPlain ? 'Hide' : 'Show';
+              tb.setAttribute('aria-label', showPlain ? 'Hide private key' : 'Show private key');
+              tb.setAttribute('aria-pressed', showPlain ? 'true' : 'false');
+            });
+
+            function bindHookToggle(btnId, panelId) {
+              var btn = document.getElementById(btnId);
+              var panel = document.getElementById(panelId);
+              if (!btn || !panel) return;
+              var inputs = panel.querySelectorAll('input[type="file"]');
+              function sync(open) {
+                panel.classList.toggle('hidden', !open);
+                inputs.forEach(function (el) { el.disabled = !open; });
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                btn.textContent = open ? 'Hide hook scripts' : 'Add hook scripts';
+              }
+              sync(false);
+              btn.addEventListener('click', function () {
+                sync(panel.classList.contains('hidden'));
+              });
+            }
+            bindHookToggle('wg-import-hooks-toggle', 'wg-import-hook-scripts-panel');
+          })();
+        </script>
+      </div>
+      {{end}}
     </div>
+    {{template "partials/np_form_submit_busy.tmpl" .}}
   </body>
 </html>
 {{end}}
-

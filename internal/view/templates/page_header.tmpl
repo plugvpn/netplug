@@ -1,5 +1,5 @@
 {{define "page_header.tmpl"}}
-<div class="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-8 dark:border-gray-700 dark:bg-gray-900">
+<div class="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-8 dark:border-[rgba(148,163,184,0.06)] dark:bg-[var(--np-panel)]">
   <div class="flex items-center gap-2">
     {{range $i, $c := .Breadcrumbs}}
       <div class="flex items-center gap-2">
@@ -9,7 +9,14 @@
         {{if $c.Current}}
           <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{$c.Label}}</span>
         {{else}}
-          <a href="{{$c.Href}}" class="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">{{$c.Label}}</a>
+          <a
+            href="{{$c.Href}}"
+            class="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+            hx-get="{{$c.Href}}"
+            hx-target="#np-main"
+            hx-push-url="true"
+            hx-swap="innerHTML"
+          >{{$c.Label}}</a>
         {{end}}
       </div>
     {{end}}

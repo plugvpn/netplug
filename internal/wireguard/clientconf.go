@@ -10,6 +10,9 @@ import (
 	"netplug-go/internal/db"
 )
 
+// ErrNoClientPrivateKey is returned when vpn_users.private_key is missing (e.g. peers imported from wg0.conf).
+var ErrNoClientPrivateKey = errors.New("user has no private key")
+
 func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filename string, err error) {
 	if sqlDB == nil {
 		return "", "", errors.New("db is nil")
@@ -31,7 +34,7 @@ func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filena
 		return "", "", err
 	}
 	if !privKey.Valid || strings.TrimSpace(privKey.String) == "" {
-		return "", "", errors.New("user has no private key")
+		return "", "", ErrNoClientPrivateKey
 	}
 	if !address.Valid || strings.TrimSpace(address.String) == "" {
 		return "", "", errors.New("user has no address")

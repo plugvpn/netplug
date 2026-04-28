@@ -1,34 +1,91 @@
 {{define "partials/active_connections.tmpl"}}
-<div class="overflow-x-auto">
-  <table class="w-full text-sm">
-    <thead>
-      <tr class="text-left text-slate-400 border-b border-slate-800">
-        <th class="py-2 pr-3">User</th>
-        <th class="py-2 pr-3">Endpoint</th>
-        <th class="py-2 pr-3">Last handshake</th>
-        <th class="py-2 pr-3">Rx rate</th>
-        <th class="py-2 pr-3">Tx rate</th>
-        <th class="py-2 pr-3">Connected at</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{if not .Connections}}
-      <tr>
-        <td class="py-3 text-slate-400" colspan="6">No active connections.</td>
-      </tr>
-      {{end}}
-      {{range .Connections}}
-      <tr class="border-b border-slate-900">
-        <td class="py-2 pr-3 font-medium">{{.Username}}</td>
-        <td class="py-2 pr-3 text-slate-300">{{.Endpoint}}</td>
-        <td class="py-2 pr-3 text-slate-300">{{.LastHandshake}}</td>
-        <td class="py-2 pr-3 text-slate-300">{{humanBytes .RxRate}}/s</td>
-        <td class="py-2 pr-3 text-slate-300">{{humanBytes .TxRate}}/s</td>
-        <td class="py-2 pr-3 text-slate-300">{{.ConnectedAt}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
+{{if not .Connections}}
+<div
+  class="flex min-h-[min(36vh,220px)] flex-col items-center justify-center px-6 py-8 text-center"
+>
+  <i
+    data-lucide="activity"
+    class="mb-3 h-9 w-9 text-slate-500"
+    style="stroke-width:1.5"
+    aria-hidden="true"
+  ></i>
+  <h2 class="mb-1.5 text-base font-semibold tracking-tight text-white">
+    No Active Connections
+  </h2>
+  <p class="max-w-sm text-sm font-normal leading-snug text-slate-400">
+    There are currently no users connected to the VPN servers.
+  </p>
+</div>
+{{else}}
+<div class="flex flex-col rounded-sm">
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[720px] text-left text-sm">
+      <thead>
+        <tr class="bg-[var(--np-field)] text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-500">
+          <th class="px-6 py-3.5 font-semibold">User</th>
+          <th class="px-4 py-3.5 font-semibold">Public IP</th>
+          <th class="px-4 py-3.5 font-semibold">Server</th>
+          <th class="px-4 py-3.5 font-semibold">Last handshake</th>
+          <th class="px-6 py-3.5 font-semibold">Total usage</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-[rgba(148,163,184,0.06)]">
+        {{range .Connections}}
+        <tr class="bg-[var(--np-panel)] transition-colors hover:bg-[var(--np-raised)]/40">
+          <td class="px-6 py-4">
+            <div class="flex items-center gap-3">
+              <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-950 text-sm font-semibold text-white ring-1 ring-emerald-700/40"
+                aria-hidden="true"
+              >
+                {{initial .Username}}
+              </div>
+              <span class="font-medium text-gray-100">{{.Username}}</span>
+            </div>
+          </td>
+          <td class="px-4 py-4">
+            <span class="font-mono text-sm text-gray-100">{{if .Endpoint}}{{.Endpoint}}{{else}}—{{end}}</span>
+          </td>
+          <td class="px-4 py-4">
+            <div class="flex flex-col gap-0.5">
+              <span class="font-medium text-gray-100">{{.ServerTitle}}</span>
+              <span class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">{{.ServerSubtitle}}</span>
+            </div>
+          </td>
+          <td class="px-4 py-4">
+            <div class="flex items-center gap-2 text-slate-400">
+              <i data-lucide="clock" class="h-4 w-4 shrink-0 text-slate-500" style="stroke-width:1.5"></i>
+              <span>{{if .LastHandshake}}{{.LastHandshake}}{{else}}—{{end}}</span>
+            </div>
+          </td>
+          <td class="px-6 py-4">
+            <div class="flex items-start gap-2.5">
+              <i data-lucide="server" class="mt-0.5 h-4 w-4 shrink-0 text-sky-400" style="stroke-width:1.5"></i>
+              <div class="flex flex-col gap-1 text-slate-300">
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="text-sky-400" aria-hidden="true">↓</span>
+                  <span>{{humanBytes .TotalRx}}</span>
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="text-sky-400" aria-hidden="true">↑</span>
+                  <span>{{humanBytes .TotalTx}}</span>
+                </span>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div
+    class="border-t border-[rgba(148,163,184,0.08)] bg-[var(--np-panel)] px-6 py-3.5 text-sm"
+  >
+    <span class="font-semibold text-gray-100">{{len .Connections}}</span>
+    <span class="text-slate-500">
+      {{if eq (len .Connections) 1}} active connection{{else}} active connections{{end}}
+    </span>
+  </div>
 </div>
 {{end}}
-
+{{end}}
