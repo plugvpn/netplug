@@ -4,7 +4,7 @@ FROM golang:${GO_VERSION}-alpine AS builder
 
 WORKDIR /src
 
-RUN apk add --no-cache build-base
+RUN apk add --no-cache build-base make
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -15,9 +15,7 @@ COPY . .
 # and "Access Server version" reflect the artifact. Example:
 #   docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) -t netplug .
 ARG GIT_COMMIT=
-RUN CGO_ENABLED=1 GOOS=linux go build -trimpath \
-    -ldflags "-s -w -X netplug-go/internal/version.Commit=${GIT_COMMIT}" \
-    -o /out/netplug ./cmd/netplug
+RUN CGO_ENABLED=1 GOOS=linux make build OUTPUT=/out/netplug GIT_COMMIT="${GIT_COMMIT}"
 
 FROM alpine:3.21 AS runner
 
