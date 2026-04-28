@@ -1325,6 +1325,9 @@ function UsersPageContent() {
                   <p className="text-sm text-gray-500 dark:text-gray-400">Enable or disable this user</p>
                 </div>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={editingUser.isEnabled}
                   onClick={() => setEditingUser({ ...editingUser, isEnabled: !editingUser.isEnabled })}
                   className={`relative h-7 w-14 rounded-full transition-colors ${
                     editingUser.isEnabled ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'

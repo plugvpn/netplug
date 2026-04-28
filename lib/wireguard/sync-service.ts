@@ -8,6 +8,24 @@ import path from 'path';
 
 const execAsync = promisify(exec);
 
+function wireGuardSyncVerbose(): boolean {
+  const v = process.env.WIREGUARD_VERBOSE_SYNC;
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function wireGuardStatusIntervalSeconds(): number {
+  const ms = parseInt(process.env.WIREGUARD_SYNC_INTERVAL_MS || '30000', 10);
+  const safe = Number.isFinite(ms) ? ms : 30000;
+  return Math.max(1, Math.floor(safe / 1000));
+}
+
+function wgExecOptions(): { timeout: number; maxBuffer: number } {
+  const raw = process.env.WG_QUICK_TIMEOUT_MS;
+  const parsed = raw ? parseInt(raw, 10) : 180000;
+  const timeout = Number.isFinite(parsed) && parsed > 0 ? parsed : 180000;
+  return { timeout, maxBuffer: 10 * 1024 * 1024 };
+}
+
 /**
  * Get the actual interface name for a WireGuard config
  * On macOS, wg0 might actually be utun8 or similar
@@ -240,7 +258,7 @@ export async function bringUpWireGuard(interfaceName = 'wg0'): Promise<boolean> 
 
     // Interface doesn't exist, bring it up with wg-quick
     console.log(`Bringing up WireGuard interface with wg-quick: ${configPath}`);
-    const { stdout, stderr } = await execAsync(`wg-quick up ${configPath}`);
+    const { stdout, stderr } = await execAsync(`wg-quick up ${configPath}`, wgExecOptions());
 
     // Parse output to find actual interface name (especially on macOS)
     const interfaceMatch = stdout.match(/Interface for \S+ is (\S+)/) || stderr.match(/Interface for \S+ is (\S+)/);
@@ -275,7 +293,7 @@ export async function bringDownWireGuard(interfaceName = 'wg0'): Promise<boolean
     const configPath = path.join(dataDir, 'wg0.conf');
 
     console.log(`Bringing down WireGuard interface: ${interfaceName}`);
-    await execAsync(`wg-quick down ${configPath}`);
+    await execAsync(`wg-quick down ${configPath}`, wgExecOptions());
     console.log(`WireGuard interface ${interfaceName} brought down successfully`);
     return true;
   } catch (error: any) {
@@ -314,7 +332,8 @@ export async function syncWireGuardConfigLive(interfaceName = 'wg0'): Promise<bo
     // Use wg syncconf with wg-quick strip to apply config without disconnecting clients
     // This removes the [Interface] section and keeps only [Peer] sections
     await execAsync(`wg syncconf ${actualInterface} <(wg-quick strip ${configPath})`, {
-      shell: '/bin/bash', // Required for process substitution <()
+      shell: '/bin/bash',
+      ...wgExecOptions(),
     });
 
     console.log(`WireGuard configuration synced successfully`);
@@ -333,7 +352,10 @@ export async function syncWireGuardConfigLive(interfaceName = 'wg0'): Promise<bo
  * Updates connection status and data transfer for each user
  * Uses persistent_keepalive to determine if user is online/offline
  */
-export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> {
+export async function syncWireGuardStatus(
+  interfaceName = 'wg0',
+  intervalSec = wireGuardStatusIntervalSeconds(),
+): Promise<void> {
   try {
     // Get the actual interface name
     const actualInterface = await getActualInterfaceName(interfaceName);
@@ -350,8 +372,6 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
 
     // User is considered offline if handshake is older than 2 minutes (120 seconds)
     const timeoutSeconds = 120;
-
-    console.log(`[WireGuard] Using timeout: ${timeoutSeconds}s (2 minutes)`);
 
     // Get all VPN users for WireGuard
     const users = await prisma.vPNUser.findMany({
@@ -405,15 +425,18 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
 
         // Check if counters decreased (reset detected - user reconnected or WireGuard restarted)
         if (peer.transferRx < user.bytesReceived || peer.transferTx < user.bytesSent) {
-          // Add previous session stats to cumulative total before resetting
           newTotalBytesReceived = user.totalBytesReceived + user.bytesReceived;
           newTotalBytesSent = user.totalBytesSent + user.bytesSent;
-          console.log(`[WireGuard] ${user.username}: Reset detected, saving session to cumulative (rx: ${user.bytesReceived}, tx: ${user.bytesSent})`);
+          if (wireGuardSyncVerbose()) {
+            console.log(
+              `[WireGuard] ${user.username}: Reset detected, saving session to cumulative (rx: ${user.bytesReceived}, tx: ${user.bytesSent})`,
+            );
+          }
         }
 
         // Calculate transfer rate (bytes per second)
         // Rate = (current - previous) / time interval
-        // Note: prevBytes are from the last sync (10 seconds ago)
+        // Note: prevBytes are from the last sync tick (~intervalSec seconds ago)
         let bytesReceivedRate = BigInt(0);
         let bytesSentRate = BigInt(0);
 
@@ -422,16 +445,14 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
           const deltaReceived = peer.transferRx - user.prevBytesReceived;
           const deltaSent = peer.transferTx - user.prevBytesSent;
 
-          // Divide by 10 seconds to get bytes per second
-          // Only calculate if delta is positive (no reset occurred)
+          const sec = BigInt(Math.max(1, intervalSec));
           if (deltaReceived >= BigInt(0) && deltaSent >= BigInt(0)) {
-            bytesReceivedRate = deltaReceived / BigInt(10);
-            bytesSentRate = deltaSent / BigInt(10);
+            bytesReceivedRate = deltaReceived / sec;
+            bytesSentRate = deltaSent / sec;
           }
         }
 
-        // Debug logging
-        if (shouldUpdateConnectedAt) {
+        if (wireGuardSyncVerbose() && shouldUpdateConnectedAt) {
           console.log(`[WireGuard] ${user.username}: Marking as newly connected, setting connectedAt to now`);
         }
 
@@ -447,15 +468,20 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
           // If lastDayCheck is null, initialize it to today
           if (!lastCheck) {
             newLastDayCheck = currentDate;
-            console.log(`[WireGuard] ${user.username}: Initializing day counter (${user.remainingDays} days remaining)`);
+            if (wireGuardSyncVerbose()) {
+              console.log(`[WireGuard] ${user.username}: Initializing day counter (${user.remainingDays} days remaining)`);
+            }
           } else {
             const daysSinceLastCheck = Math.floor((currentDate.getTime() - lastCheck.getTime()) / (1000 * 60 * 60 * 24));
 
             if (daysSinceLastCheck >= 1) {
-              // Decrement by the number of days that have passed
               newRemainingDays = Math.max(0, user.remainingDays - daysSinceLastCheck);
               newLastDayCheck = currentDate;
-              console.log(`[WireGuard] ${user.username}: ${daysSinceLastCheck} day(s) passed, decremented remaining days from ${user.remainingDays} to ${newRemainingDays}`);
+              if (wireGuardSyncVerbose()) {
+                console.log(
+                  `[WireGuard] ${user.username}: ${daysSinceLastCheck} day(s) passed, decremented remaining days from ${user.remainingDays} to ${newRemainingDays}`,
+                );
+              }
             }
           }
         }
@@ -478,7 +504,7 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
             newRemainingTrafficBytes = BigInt(0);
             shouldDisableUser = true;
             console.log(`[WireGuard] ${user.username}: Traffic quota exceeded, disabling user`);
-          } else {
+          } else if (wireGuardSyncVerbose()) {
             console.log(`[WireGuard] ${user.username}: Remaining traffic: ${Number(newRemainingTrafficBytes) / (1024 * 1024)} MB`);
           }
         }
@@ -534,14 +560,18 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
 
         if (isConnected) {
           connectedCount++;
-          console.log(
-            `[WireGuard] ${user.username}: ONLINE (handshake ${handshakeAge}s ago, rx=${peer.transferRx}, tx=${peer.transferTx})`
-          );
+          if (wireGuardSyncVerbose()) {
+            console.log(
+              `[WireGuard] ${user.username}: ONLINE (handshake ${handshakeAge}s ago, rx=${peer.transferRx}, tx=${peer.transferTx})`,
+            );
+          }
         } else {
           disconnectedCount++;
-          console.log(
-            `[WireGuard] ${user.username}: OFFLINE (handshake ${handshakeAge}s ago, exceeds 2 minute timeout)`
-          );
+          if (wireGuardSyncVerbose()) {
+            console.log(
+              `[WireGuard] ${user.username}: OFFLINE (handshake ${handshakeAge}s ago, exceeds 2 minute timeout)`,
+            );
+          }
         }
       } else {
         // User not found in WireGuard status, mark as disconnected
@@ -555,7 +585,9 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
             },
           });
           disconnectedCount++;
-          console.log(`[WireGuard] ${user.username}: OFFLINE (not in wg status)`);
+          if (wireGuardSyncVerbose()) {
+            console.log(`[WireGuard] ${user.username}: OFFLINE (not in wg status)`);
+          }
         }
       }
     }
@@ -609,7 +641,9 @@ export async function syncWireGuardStatus(interfaceName = 'wg0'): Promise<void> 
         },
       });
 
-      console.log(`[WireGuard] Recording bandwidth snapshot: download=${totalDownloadRate} B/s, upload=${totalUploadRate} B/s`);
+      if (wireGuardSyncVerbose()) {
+        console.log(`[WireGuard] Recording bandwidth snapshot: download=${totalDownloadRate} B/s, upload=${totalUploadRate} B/s`);
+      }
 
       // Cleanup old snapshots (keep last 24 hours)
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -751,11 +785,12 @@ export async function initializeWireGuard(interfaceName = 'wg0'): Promise<void> 
  * Start WireGuard sync service
  * Polls WireGuard status every 10 seconds
  */
-export function startWireGuardSyncService(interfaceName = 'wg0', intervalMs = 10000): NodeJS.Timeout {
+export function startWireGuardSyncService(interfaceName = 'wg0', intervalMs = 30000): NodeJS.Timeout {
   console.log(`[WireGuard] Starting sync service (interval: ${intervalMs}ms)`);
 
+  const intervalSec = Math.max(1, Math.floor(intervalMs / 1000));
   const interval = setInterval(async () => {
-    await syncWireGuardStatus(interfaceName);
+    await syncWireGuardStatus(interfaceName, intervalSec);
   }, intervalMs);
 
   return interval;

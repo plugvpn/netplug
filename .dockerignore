@@ -1,6 +1,7 @@
 Dockerfile
 .dockerignore
 node_modules
+package-lock.json
 npm-debug.log
 .next
 .git
@@ -16,3 +17,10 @@ coverage
 .DS_Store
 dist
 sandbox
+data
+docs
+**/*.test.ts
+**/*.test.tsx
+**/__tests__
+e2e
+.playwright
