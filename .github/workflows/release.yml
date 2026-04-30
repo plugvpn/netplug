@@ -47,7 +47,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          COMMIT=$(git rev-parse HEAD)
+          COMMIT=${{ github.ref_name }}
           OUT="netplug-${GOOS}-${GOARCH}"
           go build -trimpath -ldflags "-s -w -X ${VERSION_PKG}.Commit=${COMMIT}" -o "${OUT}" ./cmd/netplug
 
