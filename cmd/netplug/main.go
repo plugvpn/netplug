@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 	"netplug-go/internal/assets"
 	"netplug-go/internal/db"
 	"netplug-go/internal/wireguard"
+	webstatic "netplug-go/web/static"
 )
 
 func main() {
@@ -73,12 +73,11 @@ func main() {
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(sessionManager.LoadAndSave)
 
-	fs := http.FileServer(http.Dir(filepath.Join(cfg.ProjectRoot, "web", "static")))
-	r.Handle("/static/*", http.StripPrefix("/static/", fs))
+	r.Handle("/static/*", http.StripPrefix("/static/", webstatic.Handler()))
 	r.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	// Backwards-compatible asset path (from the original UI).
 	r.Get("/plug-icon.png", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(cfg.ProjectRoot, "web", "static", "plug-icon.png"))
+		http.ServeFileFS(w, r, webstatic.FS(), webstatic.PlugIconPath())
 	})
 
 	app.RegisterRoutes(r, svc)

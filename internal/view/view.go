@@ -187,7 +187,7 @@ func Render(w http.ResponseWriter, r *http.Request, name string, data M) {
 		data["GitRevision"] = version.Revision()
 	}
 	if _, ok := data["GitRevisionShort"]; !ok {
-		data["GitRevisionShort"] = version.RevisionShort()
+		data["GitRevisionShort"] = version.Display()
 	}
 
 	// Compose layout by rendering the per-page content into a safe HTML field.
@@ -250,7 +250,7 @@ func RenderPartial(w http.ResponseWriter, r *http.Request, name string, data M) 
 		data["GitRevision"] = version.Revision()
 	}
 	if _, ok := data["GitRevisionShort"]; !ok {
-		data["GitRevisionShort"] = version.RevisionShort()
+		data["GitRevisionShort"] = version.Display()
 	}
 	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("template execute error (%s): %v", name, err)

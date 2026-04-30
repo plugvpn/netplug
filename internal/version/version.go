@@ -104,6 +104,30 @@ func isLikelyGitCommitHash(s string) bool {
 	return true
 }
 
+// Display returns the version string that should be shown in tight UI surfaces.
+//
+// If the revision looks like a release tag (e.g. v1.2.3), we show it verbatim.
+// Otherwise we fall back to an abbreviated revision.
+func Display() string {
+	r := Revision()
+	if r == "unknown" {
+		return r
+	}
+	if looksLikeTag(r) {
+		return r
+	}
+	return RevisionShort()
+}
+
+func looksLikeTag(s string) bool {
+	// We intentionally keep this permissive: if the build injects a tag-like
+	// string (starting with 'v'), the UI should show it exactly as provided.
+	if len(s) < 2 || s[0] != 'v' {
+		return false
+	}
+	return strings.IndexByte(s, '.') >= 0
+}
+
 // pseudoVersionAbbrevCommit extracts the 12-character commit suffix from a
 // module pseudo-version (e.g. v0.0.0-20260428184011-111034f0471f+dirty).
 func pseudoVersionAbbrevCommit(modVersion string) string {

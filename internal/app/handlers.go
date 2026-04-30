@@ -129,12 +129,14 @@ func (h *Handlers) SetupPage(w http.ResponseWriter, r *http.Request) {
 
 	var userCount int
 	_ = h.svc.DB.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&userCount)
+	isLoggedIn := h.svc.Sessions.GetString(r.Context(), "user_id") != ""
 
 	cfg, _ := db.GetSystemConfig(h.svc.DB)
 	view.Render(w, r, "setup.tmpl", view.M{
-		"Title":     "Setup",
-		"HasAdmin":  userCount > 0,
-		"VPNConfig": string(cfg.VPNConfigJSON),
+		"Title":      "Setup",
+		"HasAdmin":   userCount > 0,
+		"IsLoggedIn": isLoggedIn,
+		"VPNConfig":  string(cfg.VPNConfigJSON),
 	})
 }
 
@@ -197,6 +199,59 @@ func (h *Handlers) SetupAdminPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
+	h.svc.Sessions.Put(r.Context(), "user_id", id)
+	http.Redirect(w, r, "/setup", http.StatusFound)
+}
+
+func (h *Handlers) SetupLoginPost(w http.ResponseWriter, r *http.Request) {
+	if h.isSetupComplete() {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	username := strings.TrimSpace(r.FormValue("username"))
+	password := r.FormValue("password")
+	if username == "" || password == "" {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":      "Setup",
+			"HasAdmin":   true,
+			"IsLoggedIn": false,
+			"Error":      "Username and password are required.",
+			"Username":   username,
+		})
+		return
+	}
+
+	var (
+		id   string
+		hash string
+		role string
+	)
+	err := h.svc.DB.QueryRow(`SELECT id, password, role FROM users WHERE username = ? LIMIT 1`, username).Scan(&id, &hash, &role)
+	if err != nil || role != "admin" {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":      "Setup",
+			"HasAdmin":   true,
+			"IsLoggedIn": false,
+			"Error":      "Invalid credentials.",
+			"Username":   username,
+		})
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":      "Setup",
+			"HasAdmin":   true,
+			"IsLoggedIn": false,
+			"Error":      "Invalid credentials.",
+			"Username":   username,
+		})
+		return
+	}
+
 	h.svc.Sessions.Put(r.Context(), "user_id", id)
 	http.Redirect(w, r, "/setup", http.StatusFound)
 }
@@ -275,7 +330,12 @@ func (h *Handlers) SetupWireGuardPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.svc.Sessions.GetString(r.Context(), "user_id") == "" {
-		http.Redirect(w, r, "/setup", http.StatusFound)
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":      "Setup",
+			"HasAdmin":   true,
+			"IsLoggedIn": false,
+			"Error":      "Your setup session expired. Sign in again to continue setup.",
+		})
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -351,7 +411,13 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if h.svc.Sessions.GetString(r.Context(), "user_id") == "" {
-		http.Redirect(w, r, "/setup", http.StatusFound)
+		view.Render(w, r, "setup.tmpl", view.M{
+			"Title":        "Setup",
+			"HasAdmin":     true,
+			"IsLoggedIn":   false,
+			"Error":        "Your setup session expired. Sign in again to continue setup.",
+			"ImportWizard": true,
+		})
 		return
 	}
 
@@ -738,7 +804,7 @@ func (h *Handlers) OverviewAllPartial(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(h.svc.StartedAt)
 	si := sysInfo{
 		ServerAddress: h.svc.Config.HTTPAddr,
-		Version:       version.RevisionShort(),
+		Version:       version.Display(),
 		OSName:        runtime.GOOS,
 		Hostname:      hn,
 		UptimeHuman:   humanUptime(uptime),

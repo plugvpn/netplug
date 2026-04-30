@@ -1,6 +1,14 @@
 {{define "setup.tmpl"}}
 <!doctype html>
 <html lang="en">
+  {{- /* Setup defaults (used for both placeholders + initial values) */ -}}
+  {{- $wgDefaultServerPort := "51820" -}}
+  {{- $wgDefaultServerAddress := "10.8.0.1" -}}
+  {{- $wgDefaultClientCIDR := "10.8.0.0/24" -}}
+  {{- $wgDefaultDNS := "1.1.1.1, 1.0.0.1" -}}
+  {{- $wgDefaultAllowedIPs := "0.0.0.0/0, ::/0" -}}
+  {{- $wgDefaultMTU := "1420" -}}
+  {{- $wgDefaultPersistentKeepalive := "25" -}}
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -94,6 +102,32 @@
           </p>
         </div>
 
+        {{if not .IsLoggedIn}}
+        <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+          <div class="text-sm font-medium text-slate-200">Sign in to continue setup</div>
+          <div class="mt-1 text-xs text-slate-500 leading-relaxed">
+            Step 2 changes server networking settings. For safety, you need to sign in with the admin account you created in Step 1.
+          </div>
+          <form method="post" action="/setup/login" class="mt-4 space-y-3">
+            <div>
+              <label for="setup-login-username" class="block text-xs font-medium text-slate-400 mb-1.5">Username</label>
+              <input id="setup-login-username" name="username" type="text" autocomplete="username" value="{{if .Username}}{{.Username}}{{end}}" required
+                placeholder="Admin username"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
+            </div>
+            <div>
+              <label for="setup-login-password" class="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+              <input id="setup-login-password" name="password" type="password" autocomplete="current-password" required
+                placeholder="Password"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
+            </div>
+            <button type="submit"
+              class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+              Continue setup
+            </button>
+          </form>
+        </div>
+        {{else}}
         <div class="mb-4">
           <div class="inline-flex rounded-lg bg-slate-950/60 border border-slate-800 p-1">
             <button id="wg-mode-generate" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium bg-slate-800 text-slate-100">
@@ -135,50 +169,50 @@
               <div>
                 <label class="block text-xs text-slate-400 mb-1" for="wg-server-port">Server port</label>
                 <input id="wg-server-port" name="server_port" type="text" inputmode="numeric" pattern="[0-9]*" required
-                  value="{{if .Form}}{{index .Form "server_port"}}{{end}}"
-                  placeholder="51820"
+                  value="{{with .Form}}{{if (index . "server_port")}}{{index . "server_port"}}{{else}}{{$wgDefaultServerPort}}{{end}}{{else}}{{$wgDefaultServerPort}}{{end}}"
+                  placeholder="{{$wgDefaultServerPort}}"
                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
               </div>
               <div>
                 <label class="block text-xs text-slate-400 mb-1" for="wg-server-address">Server address</label>
                 <input id="wg-server-address" name="server_address" type="text" required
-                  value="{{if .Form}}{{index .Form "server_address"}}{{end}}"
-                  placeholder="10.8.0.1"
+                  value="{{with .Form}}{{if (index . "server_address")}}{{index . "server_address"}}{{else}}{{$wgDefaultServerAddress}}{{end}}{{else}}{{$wgDefaultServerAddress}}{{end}}"
+                  placeholder="{{$wgDefaultServerAddress}}"
                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
               </div>
               <div>
                 <label class="block text-xs text-slate-400 mb-1" for="wg-client-range">Client CIDR</label>
                 <input id="wg-client-range" name="client_address_range" type="text" required
-                  value="{{if .Form}}{{index .Form "client_address_range"}}{{end}}"
-                  placeholder="10.8.0.0/24"
+                  value="{{with .Form}}{{if (index . "client_address_range")}}{{index . "client_address_range"}}{{else}}{{$wgDefaultClientCIDR}}{{end}}{{else}}{{$wgDefaultClientCIDR}}{{end}}"
+                  placeholder="{{$wgDefaultClientCIDR}}"
                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
               </div>
               <div class="sm:col-span-2">
                 <label class="block text-xs text-slate-400 mb-1" for="wg-dns">DNS</label>
                 <input id="wg-dns" name="dns" type="text" required
-                  value="{{if .Form}}{{index .Form "dns"}}{{end}}"
-                  placeholder="1.1.1.1, 1.0.0.1"
+                  value="{{with .Form}}{{if (index . "dns")}}{{index . "dns"}}{{else}}{{$wgDefaultDNS}}{{end}}{{else}}{{$wgDefaultDNS}}{{end}}"
+                  placeholder="{{$wgDefaultDNS}}"
                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
               </div>
               <div class="sm:col-span-2">
                 <label class="block text-xs text-slate-400 mb-1" for="wg-allowed-ips">Allowed IPs</label>
                 <input id="wg-allowed-ips" name="allowed_ips" type="text" required
-                  value="{{if .Form}}{{index .Form "allowed_ips"}}{{end}}"
-                  placeholder="0.0.0.0/0, ::/0"
+                  value="{{with .Form}}{{if (index . "allowed_ips")}}{{index . "allowed_ips"}}{{else}}{{$wgDefaultAllowedIPs}}{{end}}{{else}}{{$wgDefaultAllowedIPs}}{{end}}"
+                  placeholder="{{$wgDefaultAllowedIPs}}"
                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
               </div>
               <div>
                 <label class="block text-xs text-slate-400 mb-1" for="wg-mtu">MTU</label>
                 <input id="wg-mtu" name="mtu" type="text" inputmode="numeric" pattern="[0-9]*" required
-                  value="{{if .Form}}{{index .Form "mtu"}}{{end}}"
-                  placeholder="1420"
+                  value="{{with .Form}}{{if (index . "mtu")}}{{index . "mtu"}}{{else}}{{$wgDefaultMTU}}{{end}}{{else}}{{$wgDefaultMTU}}{{end}}"
+                  placeholder="{{$wgDefaultMTU}}"
                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
               </div>
               <div>
                 <label class="block text-xs text-slate-400 mb-1" for="wg-keepalive">Persistent keepalive</label>
                 <input id="wg-keepalive" name="persistent_keepalive" type="text" inputmode="numeric" pattern="[0-9]*" required
-                  value="{{if .Form}}{{index .Form "persistent_keepalive"}}{{end}}"
-                  placeholder="25"
+                  value="{{with .Form}}{{if (index . "persistent_keepalive")}}{{index . "persistent_keepalive"}}{{else}}{{$wgDefaultPersistentKeepalive}}{{end}}{{else}}{{$wgDefaultPersistentKeepalive}}{{end}}"
+                  placeholder="{{$wgDefaultPersistentKeepalive}}"
                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
               </div>
             </div>
@@ -257,6 +291,7 @@
             </button>
           </form>
         </div>
+        {{end}}
 
         <script>
           (function () {

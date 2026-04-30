@@ -26,6 +26,7 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 	r.Route("/setup", func(r chi.Router) {
 		r.Get("/", h.SetupPage)
 		r.Post("/admin", h.SetupAdminPost)
+		r.Post("/login", h.SetupLoginPost)
 		r.Post("/wireguard", h.SetupWireGuardPost)
 		r.Post("/wireguard/import", h.SetupWireGuardImportPost)
 		r.Post("/wireguard/generate-keys", h.SetupGenerateKeysPartial)
