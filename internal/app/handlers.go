@@ -748,7 +748,7 @@ func (h *Handlers) LogoutPost(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) UIPage(w http.ResponseWriter, r *http.Request) {
 	view.Render(w, r, "ui.tmpl", view.M{
-		"Title": "UI",
+		"Title": "Overview",
 		"Now":   time.Now(),
 	})
 }

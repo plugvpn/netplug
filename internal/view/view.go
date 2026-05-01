@@ -131,7 +131,7 @@ func breadcrumbs(path string) []Crumb {
 		}
 		segs = append(segs, p)
 	}
-	crumbs := []Crumb{{Label: "UI", Href: "/ui"}}
+	crumbs := []Crumb{{Label: "Overview", Href: "/ui"}}
 	cur := "/ui"
 	for _, s := range segs {
 		if s == "ui" {
@@ -225,7 +225,7 @@ func Render(w http.ResponseWriter, r *http.Request, name string, data M) {
 
 		if htmxMainFragment {
 			if title, ok := data["Title"].(string); ok && title != "" {
-				w.Header().Set("HX-Title", title)
+				w.Header().Set("HX-Title", "NetPlug UI - "+title)
 			}
 			_, _ = w.Write([]byte(body))
 			return
