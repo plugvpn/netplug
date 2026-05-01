@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -63,10 +64,16 @@ func main() {
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
 	sessionManager.Cookie.Secure = cfg.CookieSecure
 
+	var svcLog *slog.Logger
+	if cfg.Debug {
+		svcLog = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+
 	svc := &app.Services{
 		DB:        sqlDB,
 		Sessions:  sessionManager,
 		Config:    cfg,
+		Logger:    svcLog,
 		StartedAt: time.Now(),
 	}
 
@@ -108,8 +115,13 @@ func main() {
 			log.Printf("wireguard startup: config not applied: %s", res.Text)
 		} else {
 			log.Printf("wireguard startup: interface is up")
-			if _, err := pcq.Apply(sqlDB, cfg.WGInterface, cfg.PCQDisabled); err != nil {
-				log.Printf("pcq startup: %v", err)
+			if _, err := pcq.Apply(sqlDB, cfg.WGInterface, cfg.PCQDisabled, pcq.ApplyOpts{
+				Debug:  cfg.Debug,
+				Logger: svc.Logger,
+			}); err != nil {
+				if svc.Logger == nil {
+					log.Printf("pcq startup: %v", err)
+				}
 			}
 		}
 	}

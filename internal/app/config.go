@@ -16,6 +16,7 @@ type Config struct {
 	WGInterface  string
 	WGInterval   int  // seconds
 	PCQDisabled  bool // NETPLUG_PCQ_DISABLE removes tc shaping managed by NetPlug
+	Debug        bool // NETPLUG_DEBUG enables JSON structured debug logs (e.g. PCQ tc apply)
 
 	ProjectRoot string
 }
@@ -41,6 +42,7 @@ func LoadConfig() (Config, error) {
 
 	wgIface := env("WG_INTERFACE", "wg0")
 	pcqDisable := envBoolFlexible("NETPLUG_PCQ_DISABLE", false)
+	debug := envBoolFlexible("NETPLUG_DEBUG", false)
 
 	wgInterval := 30
 	if v := os.Getenv("WIREGUARD_SYNC_INTERVAL_SEC"); v != "" {
@@ -59,6 +61,7 @@ func LoadConfig() (Config, error) {
 		WGInterface:  wgIface,
 		WGInterval:   wgInterval,
 		PCQDisabled:  pcqDisable,
+		Debug:        debug,
 		ProjectRoot:  root,
 	}, nil
 }

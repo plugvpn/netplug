@@ -330,8 +330,11 @@ func (h *Handlers) reconcilePCQ() {
 	if h == nil || h.svc.DB == nil {
 		return
 	}
-	_, err := pcq.Apply(h.svc.DB, h.svc.Config.WGInterface, h.svc.Config.PCQDisabled)
-	if err != nil {
+	opts := pcq.ApplyOpts{
+		Debug:  h.svc.Config.Debug,
+		Logger: h.svc.Logger,
+	}
+	if _, err := pcq.Apply(h.svc.DB, h.svc.Config.WGInterface, h.svc.Config.PCQDisabled, opts); err != nil && h.svc.Logger == nil {
 		log.Printf("pcq.Apply: %v", err)
 	}
 }
