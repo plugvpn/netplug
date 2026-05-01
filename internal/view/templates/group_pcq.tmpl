@@ -1,0 +1,94 @@
+{{define "group_pcq.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "group_pcq.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8 space-y-8 max-w-4xl">
+      <div>
+        <a
+          href="/ui/groups/{{.GroupID}}"
+          class="text-sm text-emerald-400 hover:text-emerald-300 mb-2 inline-flex items-center gap-1"
+          hx-get="/ui/groups/{{.GroupID}}"
+          hx-target="#np-main"
+          hx-push-url="true"
+          hx-swap="innerHTML"
+        >
+          <i data-lucide="arrow-left" class="h-4 w-4"></i>
+          {{.GroupName}}
+        </a>
+        <h2 class="text-2xl font-semibold text-gray-100">PCQ setup</h2>
+        <p class="mt-1 text-sm text-gray-400">
+          Effective rate limits on the WireGuard interface (<code class="text-xs text-gray-500">{{.WGInterface}}</code>) using Linux
+          <code class="text-xs text-gray-500">tc</code> (HTB toward each tunnel IP, ingress police for upload). Requires
+          <code class="text-xs text-gray-500">NET_ADMIN</code> in the container; set
+          <code class="text-xs text-gray-500">NETPLUG_PCQ_DISABLE=1</code> to skip shaping.
+          {{.MemberTunnelIPsCount}} IPv4 tunnel peer(s) in this group listed below.
+        </p>
+      </div>
+
+      {{if .FlashMsg}}
+      <div class="rounded-lg border px-4 py-3 text-sm {{if eq .FlashMsgType "error"}}border-red-500/40 bg-red-950/40 text-red-200{{else}}border-emerald-500/30 bg-emerald-950/30 text-emerald-200{{end}}">
+        {{.FlashMsg}}
+      </div>
+      {{end}}
+
+      <section class="rounded border border-[rgba(148,163,184,0.055)] bg-[var(--np-panel)] p-6 space-y-4">
+        <h3 class="text-lg font-semibold text-gray-100">Rates (Mbps)</h3>
+        <p class="text-sm text-gray-400">Approximate Mbps; leave blank for no cap in that direction. Classifier mode limits which counters apply before merging limits across groups for each peer.</p>
+        <form method="post" action="/ui/groups/{{.GroupID}}/pcq" class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Download (per-connection)</label>
+            <input name="download_mbps" value="{{.DownloadMbpsInput}}" type="number" step="any" min="0" placeholder="e.g. 20"
+              class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[var(--np-muted)] px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Upload (per-connection)</label>
+            <input name="upload_mbps" value="{{.UploadMbpsInput}}" type="number" step="any" min="0" placeholder="e.g. 5"
+              class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[var(--np-muted)] px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Burst download (Mbps, optional)</label>
+            <input name="burst_download_mbps" value="{{.BurstDownloadInput}}" type="number" step="any" min="0"
+              class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[var(--np-muted)] px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Burst upload (Mbps, optional)</label>
+            <input name="burst_upload_mbps" value="{{.BurstUploadInput}}" type="number" step="any" min="0"
+              class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[var(--np-muted)] px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-medium text-gray-400 mb-1">Classifier mode</label>
+            <select name="pcq_classifier" class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[var(--np-muted)] px-3 py-2 text-sm text-gray-100">
+              <option value="dual" {{if eq .ClassifierMode "dual"}}selected{{end}}>Dual — download: dst-address, upload: src-address</option>
+              <option value="dst-download" {{if eq .ClassifierMode "dst-download"}}selected{{end}}>Emphasize dst-address (download path)</option>
+              <option value="src-upload" {{if eq .ClassifierMode "src-upload"}}selected{{end}}>Emphasize src-address (upload path)</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2 flex flex-wrap items-center gap-4 pt-2">
+            <button type="submit" class="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white hover:from-emerald-600 hover:to-teal-600">
+              Save PCQ preset
+            </button>
+            <label class="inline-flex items-center gap-2 text-sm text-gray-400">
+              <input type="checkbox" name="clear_pcq" value="on" class="rounded border-gray-600" />
+              Clear saved PCQ row for this group
+            </label>
+          </div>
+        </form>
+      </section>
+
+      <section class="rounded border border-[rgba(148,163,184,0.055)] bg-[var(--np-panel)] p-6 space-y-2">
+        <h3 class="text-lg font-semibold text-gray-100">Linux tc preview (all merged peers)</h3>
+        <p class="text-sm text-gray-400">
+          Planned <code class="text-xs text-gray-500">tc</code> commands reflecting every enabled WireGuard user in groups with saved PCQ (strictest/min cap per IPv4 tunnel). NetPlug reapplies after PCQ edits, membership changes, and WireGuard reloads.
+        </p>
+        <pre class="mt-2 max-h-96 overflow-auto rounded-lg border border-[rgba(148,163,184,0.09)] bg-[#080d12] p-4 text-xs text-gray-200 font-mono whitespace-pre-wrap">{{.LinuxTCPreview}}</pre>
+      </section>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "group_pcq.header_right"}}{{end}}

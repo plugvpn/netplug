@@ -37,6 +37,15 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 
 		r.Get("/ui", h.UIPage)
 		r.Get("/ui/users", h.UsersPage)
+		r.Get("/ui/groups", h.GroupsPage)
+		r.Post("/ui/groups", h.GroupCreatePost)
+		r.Get("/ui/pcq", h.PCQOverviewPage)
+		r.Get("/ui/groups/{id}/pcq", h.GroupPCQPage)
+		r.Post("/ui/groups/{id}/pcq", h.GroupPCQSavePost)
+		r.Get("/ui/groups/{id}", h.GroupDetailPage)
+		r.Post("/ui/groups/{id}/delete", h.GroupDeletePost)
+		r.Post("/ui/groups/{id}/members", h.GroupMemberAddPost)
+		r.Post("/ui/groups/{id}/members/{user_id}/remove", h.GroupMemberRemovePost)
 		r.Post("/ui/users", h.UserCreatePost)
 		r.Post("/ui/users/{id}/edit", h.UserUpdatePost)
 		r.Post("/ui/users/{id}/delete", h.UserDeletePost)
@@ -70,4 +79,3 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 		r.Get("/api/users/{id}/config", h.UserConfigAPIGet)
 	})
 }
-

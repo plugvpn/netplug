@@ -44,6 +44,8 @@
     {{template "sidebar_item.tmpl" dict "Href" "/ui" "Label" "Overview" "Icon" "layout-dashboard" "Active" (eq .Path "/ui") }}
     {{template "sidebar_item.tmpl" dict "Href" "/ui/connections" "Label" "Connections" "Icon" "link-2" "Active" (eq .Path "/ui/connections") }}
     {{template "sidebar_item.tmpl" dict "Href" "/ui/users" "Label" "Users" "Icon" "users" "Active" (eq .Path "/ui/users") }}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui/groups" "Label" "Groups" "Icon" "users-round" "Active" (or (eq .Path "/ui/groups") (hasPrefix .Path "/ui/groups/")) }}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui/pcq" "Label" "PCQ" "Icon" "sliders-horizontal" "Active" (eq .Path "/ui/pcq") }}
     {{template "sidebar_item.tmpl" dict "Href" "/ui/wireguard" "Label" "Wireguard" "Icon" "server" "Active" (eq .Path "/ui/wireguard") }}
   </nav>
 

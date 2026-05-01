@@ -32,6 +32,8 @@ RUN apk add --no-cache \
     iproute2 \
     ca-certificates
 
+# Traffic control CLI: `/sbin/tc` is provided by Alpine's iproute2 (listed above).
+
 EXPOSE 8080
 
 COPY --from=builder /out/netplug /usr/local/bin/netplug

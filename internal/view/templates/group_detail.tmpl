@@ -1,0 +1,110 @@
+{{define "group_detail.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "group_detail.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8 space-y-8 max-w-6xl">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <a
+            href="/ui/groups"
+            class="text-sm text-emerald-400 hover:text-emerald-300 mb-2 inline-flex items-center gap-1"
+            hx-get="/ui/groups"
+            hx-target="#np-main"
+            hx-push-url="true"
+            hx-swap="innerHTML"
+          >
+            <i data-lucide="arrow-left" class="h-4 w-4"></i>
+            All groups
+          </a>
+          <h2 class="text-2xl font-semibold text-gray-100">{{.GroupName}}</h2>
+          {{if .GroupDesc}}<p class="mt-1 text-sm text-gray-400">{{.GroupDesc}}</p>{{end}}
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <a
+            href="/ui/groups/{{.GroupID}}/pcq"
+            class="rounded-lg border border-emerald-500/40 bg-emerald-950/25 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-950/45"
+            hx-get="/ui/groups/{{.GroupID}}/pcq"
+            hx-target="#np-main"
+            hx-push-url="true"
+            hx-swap="innerHTML"
+          >PCQ setup</a>
+          <form method="post" action="/ui/groups/{{.GroupID}}/delete" onsubmit="return confirm('Delete this group? Members and PCQ presets will be removed from the group.');">
+            <button type="submit" class="rounded-lg border border-red-500/40 bg-red-950/30 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-950/50">
+              Delete group
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {{if .FlashMsg}}
+      <div class="rounded-lg border px-4 py-3 text-sm {{if eq .FlashMsgType "error"}}border-red-500/40 bg-red-950/40 text-red-200{{else}}border-emerald-500/30 bg-emerald-950/30 text-emerald-200{{end}}">
+        {{.FlashMsg}}
+      </div>
+      {{end}}
+
+      <!-- Members -->
+      <section class="rounded border border-[rgba(148,163,184,0.055)] bg-[var(--np-panel)] p-6 space-y-4">
+        <div>
+          <h3 class="text-lg font-semibold text-gray-100">Members</h3>
+          <p class="text-sm text-gray-400 mt-1">VPN users can belong to multiple groups.</p>
+        </div>
+
+        {{if .AddUserOpts}}
+        <form method="post" action="/ui/groups/{{.GroupID}}/members" class="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div class="flex-1">
+            <label class="block text-xs font-medium text-gray-400 mb-1">Add VPN user</label>
+            <select name="vpn_user_id" required class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[var(--np-muted)] px-3 py-2 text-sm text-gray-100">
+              <option value="" disabled selected>Choose user…</option>
+              {{range .AddUserOpts}}
+              <option value="{{.ID}}">{{.Username}}</option>
+              {{end}}
+            </select>
+          </div>
+          <button type="submit" class="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:from-emerald-600 hover:to-teal-600">
+            Add to group
+          </button>
+        </form>
+        {{else}}
+        <p class="text-sm text-gray-500">All VPN users are already in this group.</p>
+        {{end}}
+
+        <div class="overflow-x-auto rounded border border-[rgba(148,163,184,0.06)]">
+          <table class="w-full text-sm">
+            <thead class="text-left text-gray-400 bg-[var(--np-raised)] border-b border-[rgba(148,163,184,0.06)]">
+              <tr>
+                <th class="px-4 py-2 font-medium">Username</th>
+                <th class="px-4 py-2 font-medium">Tunnel address</th>
+                <th class="px-4 py-2 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[rgba(148,163,184,0.045)]">
+              {{if not .Members}}
+              <tr>
+                <td class="px-4 py-4 text-gray-500" colspan="3">No members yet.</td>
+              </tr>
+              {{end}}
+              {{range .Members}}
+              <tr>
+                <td class="px-4 py-3 text-gray-100 font-medium">{{.Username}}</td>
+                <td class="px-4 py-3 font-mono text-emerald-400 text-xs">{{if .TunnelIP}}{{.TunnelIP}}{{else}}<span class="text-gray-500">—</span>{{end}}</td>
+                <td class="px-4 py-3 text-right">
+                  <form method="post" action="/ui/groups/{{$.GroupID}}/members/{{.UserID}}/remove" class="inline">
+                    <button type="submit" class="text-xs font-medium text-red-300 hover:text-red-200">Remove</button>
+                  </form>
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "group_detail.header_right"}}{{end}}

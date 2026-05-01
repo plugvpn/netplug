@@ -20,6 +20,7 @@ import (
 	"netplug-go/internal/app"
 	"netplug-go/internal/assets"
 	"netplug-go/internal/db"
+	"netplug-go/internal/pcq"
 	"netplug-go/internal/wireguard"
 	webstatic "netplug-go/web/static"
 )
@@ -47,6 +48,9 @@ func main() {
 	if err := db.Migrate(sqlDB); err != nil {
 		log.Fatal(err)
 	}
+	if err := db.ApplySchemaPatches(sqlDB); err != nil {
+		log.Fatal(err)
+	}
 	if err := db.BootstrapAdmin(sqlDB); err != nil {
 		log.Fatal(err)
 	}
@@ -60,9 +64,9 @@ func main() {
 	sessionManager.Cookie.Secure = cfg.CookieSecure
 
 	svc := &app.Services{
-		DB:       sqlDB,
-		Sessions: sessionManager,
-		Config:   cfg,
+		DB:        sqlDB,
+		Sessions:  sessionManager,
+		Config:    cfg,
 		StartedAt: time.Now(),
 	}
 
@@ -104,6 +108,9 @@ func main() {
 			log.Printf("wireguard startup: config not applied: %s", res.Text)
 		} else {
 			log.Printf("wireguard startup: interface is up")
+			if _, err := pcq.Apply(sqlDB, cfg.WGInterface, cfg.PCQDisabled); err != nil {
+				log.Printf("pcq startup: %v", err)
+			}
 		}
 	}
 
@@ -121,4 +128,3 @@ func main() {
 		fmt.Fprintf(os.Stderr, "shutdown error: %v\n", err)
 	}
 }
-

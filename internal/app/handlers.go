@@ -401,6 +401,7 @@ func (h *Handlers) SetupWireGuardPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
 
 	http.Redirect(w, r, "/ui", http.StatusFound)
 }
@@ -588,6 +589,7 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	_ = wireguard.ApplyConfig(dataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
 	http.Redirect(w, r, "/ui", http.StatusFound)
 }
 
@@ -1142,6 +1144,7 @@ func (h *Handlers) UserCreatePost(w http.ResponseWriter, r *http.Request) {
 
 	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
 
 	http.Redirect(w, r, "/ui/users", http.StatusFound)
 }
@@ -1345,6 +1348,7 @@ func (h *Handlers) UserUpdatePost(w http.ResponseWriter, r *http.Request) {
 
 	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
 
 	// Close modal and show a toast; then refresh list.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1395,6 +1399,7 @@ func (h *Handlers) UserDeletePost(w http.ResponseWriter, r *http.Request) {
 
 	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
 
 	msg := "User deleted."
 	if strings.TrimSpace(username) != "" {
@@ -1565,6 +1570,7 @@ func (h *Handlers) UserTogglePost(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
 	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
 
 	http.Redirect(w, r, "/ui/users", http.StatusFound)
 }
@@ -1693,6 +1699,7 @@ func (h *Handlers) WireGuardSavePost(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
 		return
 	}
+	h.reconcilePCQ()
 	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
 }
 
@@ -1702,6 +1709,7 @@ func (h *Handlers) WireGuardReloadPost(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
 		return
 	}
+	h.reconcilePCQ()
 	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
 }
 
@@ -1738,6 +1746,7 @@ func (h *Handlers) WireGuardAPIPut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"save failed"}`, http.StatusInternalServerError)
 		return
 	}
+	h.reconcilePCQ()
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message":           res.Text,

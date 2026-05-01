@@ -37,6 +37,7 @@ func parse() (*template.Template, error) {
 			"humanBytes":  humanBytes,
 			"humanUptime": humanUptime,
 			"lower":       strings.ToLower,
+			"hasPrefix":   strings.HasPrefix,
 			"initial": func(s string) string {
 				s = strings.TrimSpace(s)
 				if s == "" {

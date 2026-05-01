@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -13,7 +14,8 @@ type Config struct {
 	DBPath       string
 	CookieSecure bool
 	WGInterface  string
-	WGInterval   int // seconds
+	WGInterval   int  // seconds
+	PCQDisabled  bool // NETPLUG_PCQ_DISABLE removes tc shaping managed by NetPlug
 
 	ProjectRoot string
 }
@@ -38,6 +40,8 @@ func LoadConfig() (Config, error) {
 	}
 
 	wgIface := env("WG_INTERFACE", "wg0")
+	pcqDisable := envBoolFlexible("NETPLUG_PCQ_DISABLE", false)
+
 	wgInterval := 30
 	if v := os.Getenv("WIREGUARD_SYNC_INTERVAL_SEC"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -54,6 +58,7 @@ func LoadConfig() (Config, error) {
 		CookieSecure: cookieSecure,
 		WGInterface:  wgIface,
 		WGInterval:   wgInterval,
+		PCQDisabled:  pcqDisable,
 		ProjectRoot:  root,
 	}, nil
 }
@@ -71,3 +76,20 @@ func env(key, fallback string) string {
 	return fallback
 }
 
+func envBoolFlexible(key string, fallback bool) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	switch v {
+	case "":
+		return fallback
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fallback
+		}
+		return b
+	}
+}

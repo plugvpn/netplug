@@ -1,0 +1,110 @@
+{{define "pcq_overview.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "pcq_overview.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">PCQ (Per Connection Queue)</h2>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Per-group bitrate caps merged per tunnel IPv4, applied on this host&apos;s WireGuard NIC with Linux
+          <code class="text-xs">tc</code> (see each group&apos;s PCQ page for the full script preview).
+        </p>
+      </div>
+
+      {{if .FlashMsg}}
+      <div class="mb-6 rounded-lg border px-4 py-3 text-sm {{if eq .FlashMsgType "error"}}border-red-500/40 bg-red-950/40 text-red-200{{else}}border-emerald-500/30 bg-emerald-950/30 text-emerald-200{{end}}">
+        {{.FlashMsg}}
+      </div>
+      {{end}}
+
+      {{if .Groups}}
+      <div class="mb-6">
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+          <input
+            id="pcq-overview-search"
+            type="text"
+            placeholder="Search by group name or PCQ summary..."
+            class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100 dark:placeholder-gray-500"
+          />
+        </div>
+      </div>
+      {{end}}
+
+      <div class="overflow-hidden rounded border border-[rgba(148,163,184,0.055)]" style="background-color:var(--np-panel);">
+        <div class="border-b border-[rgba(148,163,184,0.06)] bg-gradient-to-r from-[var(--np-raised)] to-[var(--np-panel)] p-6">
+          <h3 class="text-base font-normal text-white">Groups — PCQ summaries</h3>
+        </div>
+        <style>
+          tr.pcq-sum-row:nth-child(odd) { background-color: var(--np-panel); }
+          tr.pcq-sum-row:nth-child(even) { background-color: #0a0d12; }
+          tr.pcq-sum-row:hover { background-color: rgba(148, 163, 184, 0.065) !important; }
+        </style>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead style="background-color:var(--np-raised);" class="text-left text-gray-400 border-b border-[rgba(148,163,184,0.07)]">
+              <tr>
+                <th class="px-6 py-3">Group</th>
+                <th class="px-6 py-3">Members</th>
+                <th class="px-6 py-3">PCQ caps</th>
+                <th class="px-6 py-3">Classifier</th>
+                <th class="px-6 py-3 text-right">Configure</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[rgba(148,163,184,0.045)]">
+              {{if not .Groups}}
+              <tr>
+                <td class="px-6 py-6 text-gray-500" colspan="5">No groups yet. Create one under <a href="/ui/groups" class="text-emerald-400 hover:text-emerald-300" hx-get="/ui/groups" hx-target="#np-main" hx-push-url="true" hx-swap="innerHTML">Groups</a>.</td>
+              </tr>
+              {{end}}
+              {{range .Groups}}
+              <tr
+                class="pcq-sum-row"
+                data-group="{{lower .Name}}"
+                data-pcq="{{lower .PCQSummary}}"
+                data-clf="{{lower .Classifier}}"
+              >
+                <td class="px-6 py-4 font-medium text-gray-100">{{.Name}}</td>
+                <td class="px-6 py-4 text-gray-300">{{.Members}}</td>
+                <td class="px-6 py-4 font-mono text-xs text-emerald-300">{{.PCQSummary}}</td>
+                <td class="px-6 py-4 text-gray-400">{{.Classifier}}</td>
+                <td class="px-6 py-4 text-right">
+                  <a
+                    href="/ui/groups/{{.GroupID}}/pcq"
+                    class="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20"
+                    hx-get="/ui/groups/{{.GroupID}}/pcq"
+                    hx-target="#np-main"
+                    hx-push-url="true"
+                    hx-swap="innerHTML"
+                  >PCQ</a>
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    const input = document.getElementById('pcq-overview-search');
+    if (!input) return;
+    function norm(s) { return (s || '').toString().toLowerCase().trim(); }
+    input.addEventListener('input', function () {
+      const q = norm(input.value);
+      document.querySelectorAll('tr.pcq-sum-row').forEach(function (row) {
+        const hay = ['data-group', 'data-pcq', 'data-clf'].map(function (a) { return norm(row.getAttribute(a)); }).join(' ');
+        row.style.display = !q || hay.includes(q) ? '' : 'none';
+      });
+    });
+  })();
+</script>
+{{end}}
+
+{{define "pcq_overview.header_right"}}{{end}}
