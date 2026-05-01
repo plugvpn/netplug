@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -39,11 +40,34 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 		r.Get("/ui/users", h.UsersPage)
 		r.Get("/ui/groups", h.GroupsPage)
 		r.Post("/ui/groups", h.GroupCreatePost)
-		r.Get("/ui/pcq", h.PCQOverviewPage)
-		r.Get("/ui/groups/{id}/pcq", h.GroupPCQPage)
+		r.Get("/ui/queues", h.PCQOverviewPage)
+		r.Get("/ui/queues/{id}", h.GroupPCQPage)
+		r.Post("/ui/queues/{id}", h.GroupPCQSavePost)
+		r.Post("/ui/queues/{id}/toggle", h.GroupPCQTogglePost)
+		r.Get("/ui/groups/{id}/queues", func(w http.ResponseWriter, r *http.Request) {
+			id := strings.TrimSpace(chi.URLParam(r, "id"))
+			if id == "" {
+				http.NotFound(w, r)
+				return
+			}
+			http.Redirect(w, r, "/ui/queues/"+id, http.StatusMovedPermanently)
+		})
+		r.Post("/ui/groups/{id}/queues", h.GroupPCQSavePost)
+		r.Get("/ui/pcq", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/ui/queues", http.StatusMovedPermanently)
+		})
+		r.Get("/ui/groups/{id}/pcq", func(w http.ResponseWriter, r *http.Request) {
+			id := strings.TrimSpace(chi.URLParam(r, "id"))
+			if id == "" {
+				http.NotFound(w, r)
+				return
+			}
+			http.Redirect(w, r, "/ui/queues/"+id, http.StatusMovedPermanently)
+		})
 		r.Post("/ui/groups/{id}/pcq", h.GroupPCQSavePost)
 		r.Get("/ui/groups/{id}", h.GroupDetailPage)
 		r.Post("/ui/groups/{id}/delete", h.GroupDeletePost)
+		r.Post("/ui/groups/{id}/members/bulk", h.GroupMemberBulkAddPost)
 		r.Post("/ui/groups/{id}/members", h.GroupMemberAddPost)
 		r.Post("/ui/groups/{id}/members/{user_id}/remove", h.GroupMemberRemovePost)
 		r.Post("/ui/users", h.UserCreatePost)
@@ -63,6 +87,10 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 		r.Get("/partials/ui/active-connections", h.ActiveConnectionsPartial)
 		r.Get("/partials/overview/all", h.OverviewAllPartial)
 		r.Get("/partials/users/add-modal", h.AddUserModalPartial)
+		r.Get("/partials/groups/add-modal", h.GroupAddModalPartial)
+		r.Get("/partials/groups/{id}/delete-modal", h.GroupDeleteModalPartial)
+		r.Get("/partials/groups/{id}/add-members-modal", h.GroupAddMembersModalPartial)
+		r.Get("/partials/groups/{id}/members/{user_id}/remove-modal", h.GroupMemberRemoveModalPartial)
 		r.Get("/partials/users/{id}/edit-modal", h.EditUserModalPartial)
 		r.Get("/partials/users/{id}/qr-modal", h.UserQRModalPartial)
 		r.Get("/partials/users/{id}/delete-modal", h.UserDeleteModalPartial)

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS vpn_group_pcq (
   burst_download_kbps INTEGER NULL,
   burst_upload_kbps INTEGER NULL,
   pcq_classifier TEXT NOT NULL DEFAULT 'dual',
+  is_disabled INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY(group_id) REFERENCES vpn_groups(id) ON DELETE CASCADE
@@ -44,5 +45,7 @@ CREATE TABLE IF NOT EXISTS vpn_group_pcq (
 	if _, err := db.Exec(patch); err != nil {
 		return err
 	}
+	// Idempotent column addition for existing installs (ignore error if column already exists).
+	_, _ = db.Exec(`ALTER TABLE vpn_group_pcq ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0`)
 	return nil
 }

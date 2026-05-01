@@ -165,7 +165,7 @@
         document.querySelectorAll('#sidebar a.np-spa-link').forEach(function (a) {
           var href = a.getAttribute('href');
           if (!href) return;
-          var on = href === path;
+          var on = href === path || (href !== '/ui' && path.startsWith(href + '/'));
           a.classList.toggle('np-active', on);
         });
       }
@@ -346,32 +346,110 @@
             var root = document.getElementById('np-toast-root');
             if (!root) return;
             var t = (type || 'success').toLowerCase();
-            var isErr = (t === 'error' || t === 'danger' || t === 'fail' || t === 'failed');
+            var isErr  = (t === 'error' || t === 'danger' || t === 'fail' || t === 'failed');
+            var isWarn = (t === 'warning' || t === 'warn');
+
+            var cfg = isErr ? {
+              border : 'rgba(185,28,28,0.45)',
+              bg     : 'rgba(69,10,10,0.92)',
+              accent : '#ef4444',
+              title  : '#fca5a5',
+              body   : 'rgba(252,165,165,0.75)',
+              label  : 'Error',
+              icon   : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+            } : isWarn ? {
+              border : 'rgba(180,130,0,0.4)',
+              bg     : 'rgba(69,45,0,0.92)',
+              accent : '#f59e0b',
+              title  : '#fcd34d',
+              body   : 'rgba(253,211,77,0.72)',
+              label  : 'Warning',
+              icon   : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+            } : {
+              border : 'rgba(16,185,129,0.35)',
+              bg     : 'rgba(6,40,25,0.92)',
+              accent : '#10b981',
+              title  : '#6ee7b7',
+              body   : 'rgba(110,231,183,0.70)',
+              label  : 'Success',
+              icon   : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+            };
+
             var el = document.createElement('div');
-            el.className =
-              'w-[360px] max-w-[calc(100vw-3rem)] rounded-lg border px-4 py-3 shadow-lg shadow-black/40 backdrop-blur ' +
-              (isErr
-                ? 'border-red-900/60 bg-red-950/80 text-red-100'
-                : 'border-emerald-900/60 bg-emerald-950/70 text-emerald-50');
+            el.style.cssText = [
+              'display:flex','align-items:stretch',
+              'width:360px','max-width:calc(100vw - 3rem)',
+              'border-radius:10px',
+              'border:1px solid ' + cfg.border,
+              'background:' + cfg.bg,
+              'box-shadow:0 8px 24px rgba(0,0,0,0.5)',
+              'backdrop-filter:blur(12px)',
+              'overflow:hidden',
+              'opacity:0',
+              'transform:translateX(24px)',
+              'transition:opacity 220ms ease, transform 220ms ease',
+            ].join(';');
 
-            var title = document.createElement('div');
-            title.className = 'text-sm font-medium';
-            title.textContent = isErr ? 'Error' : 'Success';
+            // left accent stripe
+            var stripe = document.createElement('div');
+            stripe.style.cssText = 'width:4px;flex-shrink:0;background:' + cfg.accent + ';border-radius:10px 0 0 10px;';
 
+            // body wrapper
             var body = document.createElement('div');
-            body.className = 'mt-1 text-sm opacity-90';
-            body.textContent = String(message || '');
+            body.style.cssText = 'flex:1;display:flex;align-items:flex-start;gap:10px;padding:12px 14px;min-width:0;';
 
-            el.appendChild(title);
+            // icon
+            var iconWrap = document.createElement('div');
+            iconWrap.style.cssText = 'flex-shrink:0;margin-top:1px;';
+            iconWrap.innerHTML = cfg.icon;
+
+            // text block
+            var text = document.createElement('div');
+            text.style.cssText = 'flex:1;min-width:0;';
+
+            var titleEl = document.createElement('div');
+            titleEl.style.cssText = 'font-size:0.8125rem;font-weight:600;color:' + cfg.title + ';line-height:1.3;';
+            titleEl.textContent = cfg.label;
+
+            var msgEl = document.createElement('div');
+            msgEl.style.cssText = 'font-size:0.8rem;margin-top:3px;color:' + cfg.body + ';line-height:1.4;word-break:break-word;';
+            msgEl.textContent = String(message || '');
+
+            text.appendChild(titleEl);
+            if (message) text.appendChild(msgEl);
+
+            // close button
+            var close = document.createElement('button');
+            close.type = 'button';
+            close.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            close.style.cssText = 'flex-shrink:0;margin-top:1px;padding:2px;color:' + cfg.body + ';opacity:0.6;cursor:pointer;background:none;border:none;line-height:0;';
+            close.onmouseover = function() { close.style.opacity = '1'; };
+            close.onmouseout  = function() { close.style.opacity = '0.6'; };
+            close.onclick = function() { dismiss(); };
+
+            body.appendChild(iconWrap);
+            body.appendChild(text);
+            body.appendChild(close);
+
+            el.appendChild(stripe);
             el.appendChild(body);
             root.appendChild(el);
 
-            setTimeout(function () {
-              try { el.style.opacity = '0'; el.style.transition = 'opacity 300ms'; } catch (e) {}
-            }, 3200);
-            setTimeout(function () {
-              try { if (el && el.parentNode) el.parentNode.removeChild(el); } catch (e) {}
-            }, 3600);
+            // slide in
+            requestAnimationFrame(function() {
+              el.style.opacity = '1';
+              el.style.transform = 'translateX(0)';
+            });
+
+            function dismiss() {
+              el.style.opacity = '0';
+              el.style.transform = 'translateX(16px)';
+              setTimeout(function() {
+                try { if (el.parentNode) el.parentNode.removeChild(el); } catch(e) {}
+              }, 260);
+            }
+
+            setTimeout(dismiss, 4000);
           } catch (e) {}
         }
 

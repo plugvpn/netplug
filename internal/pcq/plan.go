@@ -40,20 +40,13 @@ func burstBytesPreferringConfig(burstKbps, rateKbps int) int {
 	return 12500
 }
 
-// Plan returns shell-style tc argument vectors (never executed here).
-func Plan(wgIface string, peers map[string]PeerLimit) [][]string {
+// peerShapeAppend appends shaping-only tc argument vectors for peers (no qdisc teardown or root resets).
+func peerShapeAppend(iface string, peers map[string]PeerLimit) [][]string {
 	if peers == nil {
 		peers = make(map[string]PeerLimit)
 	}
-	iface := strings.TrimSpace(wgIface)
 	var cmds [][]string
-	cmds = append(cmds, []string{"sh", "-c", "tc qdisc del dev " + iface + " ingress 2>/dev/null || true"})
-	cmds = append(cmds, []string{"sh", "-c", "tc qdisc del dev " + iface + " root 2>/dev/null || true"})
-	if iface == "" {
-		return cmds
-	}
-
-	if len(peers) == 0 {
+	if iface == "" || len(peers) == 0 {
 		return cmds
 	}
 
@@ -145,6 +138,31 @@ func Plan(wgIface string, peers map[string]PeerLimit) [][]string {
 	return cmds
 }
 
+// Plan returns shell-style tc argument vectors for a full apply (starts with teardown of existing netplug root/ingress).
+func Plan(wgIface string, peers map[string]PeerLimit) [][]string {
+	if peers == nil {
+		peers = make(map[string]PeerLimit)
+	}
+	iface := strings.TrimSpace(wgIface)
+	var cmds [][]string
+	cmds = append(cmds, []string{"sh", "-c", "tc qdisc del dev " + iface + " ingress 2>/dev/null || true"})
+	cmds = append(cmds, []string{"sh", "-c", "tc qdisc del dev " + iface + " root 2>/dev/null || true"})
+	if iface == "" {
+		return cmds
+	}
+
+	if len(peers) == 0 {
+		return cmds
+	}
+
+	return append(cmds, peerShapeAppend(iface, peers)...)
+}
+
+// PlanForPeers returns shaping-only vectors for peers (omit iface-wide teardown), for UI previews scoped to one source of limits.
+func PlanForPeers(wgIface string, peers map[string]PeerLimit) [][]string {
+	return peerShapeAppend(strings.TrimSpace(wgIface), peers)
+}
+
 // PlanCommands loads peer limits then returns formatted command lines for display / logging.
 func PlanCommands(db *sql.DB, wgIface string) ([]string, error) {
 	m, err := LoadPeerLimits(db)
@@ -152,6 +170,44 @@ func PlanCommands(db *sql.DB, wgIface string) ([]string, error) {
 		return nil, err
 	}
 	return FormatPlan(Plan(wgIface, m)), nil
+}
+
+// PlanCommandsForGroup returns formatted tc lines for one group's preset and members only (not merged with other groups).
+func PlanCommandsForGroup(db *sql.DB, wgIface, groupID string) ([]string, error) {
+	var presetCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM vpn_group_pcq WHERE group_id = ?`, groupID).Scan(&presetCount); err != nil {
+		return nil, err
+	}
+	if presetCount == 0 {
+		return []string{
+			"# No saved queue preset for this group yet.",
+			"# Save Mbps caps below to preview shaping for this group's members only.",
+			"#",
+			"# Live apply still merges presets from every group when computing caps per tunnel peer.",
+		}, nil
+	}
+
+	m, err := LoadPeerLimitsForGroup(db, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if len(m) == 0 {
+		return []string{
+			"# This group's preset has no effective shaping lines yet:",
+			"# set upload/download Mbps or ensure members use WireGuard with IPv4 tunnel addresses.",
+		}, nil
+	}
+
+	iface := strings.TrimSpace(wgIface)
+	if iface == "" {
+		return []string{"# Configure a WireGuard interface name to preview interface-specific tc lines."}, nil
+	}
+
+	lines := FormatPlan(PlanForPeers(iface, m))
+	if len(lines) == 0 {
+		return []string{"# (No tc shaping lines for empty interface or limits.)"}, nil
+	}
+	return lines, nil
 }
 
 func FormatPlan(cmds [][]string) []string {

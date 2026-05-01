@@ -29,7 +29,13 @@ var (
 	once     sync.Once
 	baseTmpl *template.Template
 	baseErr  error
+
+	globalPCQDisabled bool
 )
+
+// SetPCQDisabled stores the NETPLUG_PCQ_DISABLE flag so every Render call
+// can inject it into templates automatically.
+func SetPCQDisabled(v bool) { globalPCQDisabled = v }
 
 func parse() (*template.Template, error) {
 	once.Do(func() {
@@ -190,6 +196,9 @@ func Render(w http.ResponseWriter, r *http.Request, name string, data M) {
 	if _, ok := data["GitRevisionShort"]; !ok {
 		data["GitRevisionShort"] = version.Display()
 	}
+	if _, ok := data["PCQDisabled"]; !ok {
+		data["PCQDisabled"] = globalPCQDisabled
+	}
 
 	// Compose layout by rendering the per-page content into a safe HTML field.
 	htmx := strings.EqualFold(r.Header.Get("HX-Request"), "true")
@@ -252,6 +261,9 @@ func RenderPartial(w http.ResponseWriter, r *http.Request, name string, data M) 
 	}
 	if _, ok := data["GitRevisionShort"]; !ok {
 		data["GitRevisionShort"] = version.Display()
+	}
+	if _, ok := data["PCQDisabled"]; !ok {
+		data["PCQDisabled"] = globalPCQDisabled
 	}
 	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("template execute error (%s): %v", name, err)

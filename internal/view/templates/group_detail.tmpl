@@ -6,37 +6,35 @@
 <div class="h-full flex flex-col overflow-hidden">
   {{template "page_header.tmpl" .}}
   <div class="flex-1 overflow-y-auto">
-    <div class="p-8 space-y-8 max-w-6xl">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <a
-            href="/ui/groups"
-            class="text-sm text-emerald-400 hover:text-emerald-300 mb-2 inline-flex items-center gap-1"
-            hx-get="/ui/groups"
-            hx-target="#np-main"
-            hx-push-url="true"
+    <div class="p-8" style="display:flex; flex-direction:column; gap:2rem;">
+      <div class="flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <h2 class="text-2xl font-semibold text-gray-100">{{.GroupName}}</h2>
+          <p class="mt-1 text-sm text-gray-400">
+            {{if .GroupDesc}}{{.GroupDesc}}{{else}}Manage members and queue settings for this group.{{end}}
+          </p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600"
+            hx-get="/partials/groups/{{.GroupID}}/add-members-modal"
+            hx-target="#modal-root"
             hx-swap="innerHTML"
           >
-            <i data-lucide="arrow-left" class="h-4 w-4"></i>
-            All groups
-          </a>
-          <h2 class="text-2xl font-semibold text-gray-100">{{.GroupName}}</h2>
-          {{if .GroupDesc}}<p class="mt-1 text-sm text-gray-400">{{.GroupDesc}}</p>{{end}}
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <a
-            href="/ui/groups/{{.GroupID}}/pcq"
-            class="rounded-lg border border-emerald-500/40 bg-emerald-950/25 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-950/45"
-            hx-get="/ui/groups/{{.GroupID}}/pcq"
-            hx-target="#np-main"
-            hx-push-url="true"
+            <i data-lucide="user-plus" class="h-4 w-4"></i>
+            Add members
+          </button>
+          <button
+            type="button"
+            class="flex items-center gap-2 rounded-lg border border-red-700 px-4 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-950 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+            hx-get="/partials/groups/{{.GroupID}}/delete-modal"
+            hx-target="#modal-root"
             hx-swap="innerHTML"
-          >PCQ setup</a>
-          <form method="post" action="/ui/groups/{{.GroupID}}/delete" onsubmit="return confirm('Delete this group? Members and PCQ presets will be removed from the group.');">
-            <button type="submit" class="rounded-lg border border-red-500/40 bg-red-950/30 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-950/50">
-              Delete group
-            </button>
-          </form>
+          >
+            <i data-lucide="trash-2" class="h-4 w-4"></i>
+            Delete group
+          </button>
         </div>
       </div>
 
@@ -47,61 +45,78 @@
       {{end}}
 
       <!-- Members -->
-      <section class="rounded border border-[rgba(148,163,184,0.055)] bg-[var(--np-panel)] p-6 space-y-4">
-        <div>
-          <h3 class="text-lg font-semibold text-gray-100">Members</h3>
-          <p class="text-sm text-gray-400 mt-1">VPN users can belong to multiple groups.</p>
+      <div class="overflow-hidden rounded border border-[rgba(148,163,184,0.055)]" style="background-color:var(--np-panel);">
+        <div class="border-b border-[rgba(148,163,184,0.06)] bg-gradient-to-r from-[var(--np-raised)] to-[var(--np-panel)] p-6">
+          <h3 class="text-base font-normal text-white">Members ({{len .Members}})</h3>
+          <p class="mt-1 text-sm text-gray-500">Users can belong to multiple groups.</p>
         </div>
-
-        {{if .AddUserOpts}}
-        <form method="post" action="/ui/groups/{{.GroupID}}/members" class="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div class="flex-1">
-            <label class="block text-xs font-medium text-gray-400 mb-1">Add VPN user</label>
-            <select name="vpn_user_id" required class="w-full rounded-lg border border-[rgba(148,163,184,0.09)] bg-[var(--np-muted)] px-3 py-2 text-sm text-gray-100">
-              <option value="" disabled selected>Choose user…</option>
-              {{range .AddUserOpts}}
-              <option value="{{.ID}}">{{.Username}}</option>
-              {{end}}
-            </select>
-          </div>
-          <button type="submit" class="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:from-emerald-600 hover:to-teal-600">
-            Add to group
-          </button>
-        </form>
-        {{else}}
-        <p class="text-sm text-gray-500">All VPN users are already in this group.</p>
-        {{end}}
-
-        <div class="overflow-x-auto rounded border border-[rgba(148,163,184,0.06)]">
-          <table class="w-full text-sm">
-            <thead class="text-left text-gray-400 bg-[var(--np-raised)] border-b border-[rgba(148,163,184,0.06)]">
-              <tr>
-                <th class="px-4 py-2 font-medium">Username</th>
-                <th class="px-4 py-2 font-medium">Tunnel address</th>
-                <th class="px-4 py-2 font-medium text-right">Actions</th>
+        <style>
+          tr.members-row {
+            transition: background-color 0.15s ease-out;
+          }
+          tr.members-row:nth-child(odd) {
+            background-color: var(--np-panel);
+          }
+          tr.members-row:nth-child(even) {
+            background-color: #0a0d12;
+          }
+          tr.members-row:hover {
+            background-color: rgba(148, 163, 184, 0.065) !important;
+          }
+        </style>
+        <div class="overflow-x-auto" style="background-color:var(--np-panel); scrollbar-width:thin; scrollbar-color:#374151 var(--np-panel);">
+          <table class="w-full" style="background-color:var(--np-panel);">
+            <thead style="background-color:var(--np-raised);">
+              <tr class="border-b border-[rgba(148,163,184,0.07)] text-left text-sm font-medium text-gray-300 dark:text-gray-400">
+                <th class="px-6 py-3">User</th>
+                <th class="px-6 py-3">Tunnel IP</th>
+                <th class="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-[rgba(148,163,184,0.045)]">
+            <tbody class="divide-y divide-[rgba(148,163,184,0.045)]" style="background-color:var(--np-panel);">
               {{if not .Members}}
               <tr>
-                <td class="px-4 py-4 text-gray-500" colspan="3">No members yet.</td>
+                <td class="px-6 py-8 text-center text-sm text-gray-500" colspan="3">No members yet. Use <strong class="font-medium text-gray-400">Add members</strong> to invite VPN users.</td>
               </tr>
               {{end}}
               {{range .Members}}
-              <tr>
-                <td class="px-4 py-3 text-gray-100 font-medium">{{.Username}}</td>
-                <td class="px-4 py-3 font-mono text-emerald-400 text-xs">{{if .TunnelIP}}{{.TunnelIP}}{{else}}<span class="text-gray-500">—</span>{{end}}</td>
-                <td class="px-4 py-3 text-right">
-                  <form method="post" action="/ui/groups/{{$.GroupID}}/members/{{.UserID}}/remove" class="inline">
-                    <button type="submit" class="text-xs font-medium text-red-300 hover:text-red-200">Remove</button>
-                  </form>
+              <tr class="members-row">
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-700 dark:bg-[var(--np-muted)]">
+                      <span class="text-sm font-semibold text-gray-300">{{initial .Username}}</span>
+                    </div>
+                    <span class="font-medium text-gray-100">{{.Username}}</span>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  {{if .TunnelIP}}
+                    <span class="font-mono text-sm text-emerald-400">{{.TunnelIP}}</span>
+                  {{else}}
+                    <span class="text-sm text-gray-500">—</span>
+                  {{end}}
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      class="rounded-md border border-red-700 p-2 text-red-400 transition-colors hover:bg-red-950 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                      title="Remove from group"
+                      hx-get="/partials/groups/{{$.GroupID}}/members/{{.UserID}}/remove-modal"
+                      hx-target="#modal-root"
+                      hx-swap="innerHTML"
+                    >
+                      <i data-lucide="user-minus" class="h-4 w-4"></i>
+                    </button>
+                  </div>
                 </td>
               </tr>
               {{end}}
             </tbody>
           </table>
         </div>
-      </section>
+      </div>
+      <div id="modal-root"></div>
     </div>
   </div>
 </div>

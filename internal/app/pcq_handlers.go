@@ -123,15 +123,31 @@ func kbpsToMbpsInput(v sql.NullInt64) string {
 }
 
 func (h *Handlers) PCQOverviewPage(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.svc.DB.Query(`
+	type presetRow struct {
+		GroupID    string
+		Name       string
+		Members    int
+		PCQSummary string
+		Classifier string
+		HasLimits  bool
+		IsDisabled bool
+	}
+	type sansRow struct {
+		GroupID string
+		Name    string
+		Members int
+	}
+
+	withRows, err := h.svc.DB.Query(`
 		SELECT g.id,
 			g.name,
 			COALESCE((SELECT COUNT(*) FROM vpn_group_members m WHERE m.group_id = g.id), 0),
 			p.download_limit_kbps,
 			p.upload_limit_kbps,
-			p.pcq_classifier
+			p.pcq_classifier,
+			IFNULL(p.is_disabled, 0)
 		FROM vpn_groups g
-		LEFT JOIN vpn_group_pcq p ON p.group_id = g.id
+		INNER JOIN vpn_group_pcq p ON p.group_id = g.id
 		ORDER BY g.name COLLATE NOCASE ASC
 		LIMIT 400
 	`)
@@ -139,22 +155,15 @@ func (h *Handlers) PCQOverviewPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer withRows.Close()
 
-	type row struct {
-		GroupID    string
-		Name       string
-		Members    int
-		PCQSummary string
-		Classifier string
-		HasLimits  bool
-	}
-	var out []row
-	for rows.Next() {
-		var rec row
+	var presets []presetRow
+	for withRows.Next() {
+		var rec presetRow
 		var dl, ul sql.NullInt64
 		var clf sql.NullString
-		if err := rows.Scan(&rec.GroupID, &rec.Name, &rec.Members, &dl, &ul, &clf); err != nil {
+		var disabled int
+		if err := withRows.Scan(&rec.GroupID, &rec.Name, &rec.Members, &dl, &ul, &clf, &disabled); err != nil {
 			http.Error(w, "server error", http.StatusInternalServerError)
 			return
 		}
@@ -163,12 +172,41 @@ func (h *Handlers) PCQOverviewPage(w http.ResponseWriter, r *http.Request) {
 		} else {
 			rec.Classifier = "dual"
 		}
-
 		rec.HasLimits = (dl.Valid && dl.Int64 > 0) || (ul.Valid && ul.Int64 > 0)
 		rec.PCQSummary = pcqLimitsSummary(dl, ul)
-		out = append(out, rec)
+		rec.IsDisabled = disabled == 1
+		presets = append(presets, rec)
 	}
-	if err := rows.Err(); err != nil {
+	if err := withRows.Err(); err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+
+	noPresetRows, err := h.svc.DB.Query(`
+		SELECT g.id,
+			g.name,
+			COALESCE((SELECT COUNT(*) FROM vpn_group_members m WHERE m.group_id = g.id), 0)
+		FROM vpn_groups g
+		WHERE NOT EXISTS (SELECT 1 FROM vpn_group_pcq p WHERE p.group_id = g.id)
+		ORDER BY g.name COLLATE NOCASE ASC
+		LIMIT 400
+	`)
+	if err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	defer noPresetRows.Close()
+
+	var sans []sansRow
+	for noPresetRows.Next() {
+		var rec sansRow
+		if err := noPresetRows.Scan(&rec.GroupID, &rec.Name, &rec.Members); err != nil {
+			http.Error(w, "server error", http.StatusInternalServerError)
+			return
+		}
+		sans = append(sans, rec)
+	}
+	if err := noPresetRows.Err(); err != nil {
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
@@ -177,10 +215,11 @@ func (h *Handlers) PCQOverviewPage(w http.ResponseWriter, r *http.Request) {
 	msgType := strings.TrimSpace(r.URL.Query().Get("msgType"))
 
 	view.Render(w, r, "pcq_overview.tmpl", view.M{
-		"Title":        "PCQ",
-		"Groups":       out,
-		"FlashMsg":     msg,
-		"FlashMsgType": msgType,
+		"Title":            "Queues",
+		"QueuePresets":     presets,
+		"GroupsSansQueue":  sans,
+		"FlashMsg":         msg,
+		"FlashMsgType":     msgType,
 	})
 }
 
@@ -207,21 +246,22 @@ func (h *Handlers) GroupPCQPage(w http.ResponseWriter, r *http.Request) {
 	var (
 		dlKbps, ulKbps, burstDlKbps, burstUlKbps sql.NullInt64
 		classifier                               string
+		isDisabled                               int
 	)
-	err = h.svc.DB.QueryRow(`
+	presetErr := h.svc.DB.QueryRow(`
 		SELECT download_limit_kbps, upload_limit_kbps, burst_download_kbps, burst_upload_kbps,
-		       IFNULL(pcq_classifier, 'dual')
+		       IFNULL(pcq_classifier, 'dual'), IFNULL(is_disabled, 0)
 		FROM vpn_group_pcq WHERE group_id = ?
-	`, groupID).Scan(&dlKbps, &ulKbps, &burstDlKbps, &burstUlKbps, &classifier)
-	if err != nil && err != sql.ErrNoRows {
+	`, groupID).Scan(&dlKbps, &ulKbps, &burstDlKbps, &burstUlKbps, &classifier, &isDisabled)
+	if presetErr != nil && presetErr != sql.ErrNoRows {
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
-	if err == sql.ErrNoRows {
+	if presetErr == sql.ErrNoRows {
 		classifier = "dual"
 	}
 
-	previewLines, err := pcq.PlanCommands(h.svc.DB, h.svc.Config.WGInterface)
+	previewLines, err := pcq.PlanCommandsForGroup(h.svc.DB, h.svc.Config.WGInterface, groupID)
 	previewText := strings.Join(previewLines, "\n")
 	if err != nil {
 		previewText = "# error building tc plan: " + err.Error()
@@ -231,7 +271,7 @@ func (h *Handlers) GroupPCQPage(w http.ResponseWriter, r *http.Request) {
 	msgType := strings.TrimSpace(r.URL.Query().Get("msgType"))
 
 	view.Render(w, r, "group_pcq.tmpl", view.M{
-		"Title":                "PCQ — " + gName,
+		"Title":                "Queue — " + gName,
 		"GroupID":              groupID,
 		"GroupName":            gName,
 		"DownloadMbpsInput":    kbpsToMbpsInput(dlKbps),
@@ -239,6 +279,8 @@ func (h *Handlers) GroupPCQPage(w http.ResponseWriter, r *http.Request) {
 		"BurstDownloadInput":   kbpsToMbpsInput(burstDlKbps),
 		"BurstUploadInput":     kbpsToMbpsInput(burstUlKbps),
 		"ClassifierMode":       classifier,
+		"IsDisabled":           isDisabled == 1,
+		"HasPreset":            presetErr != sql.ErrNoRows,
 		"LinuxTCPreview":       previewText,
 		"WGInterface":          h.svc.Config.WGInterface,
 		"MemberTunnelIPs":      tunnelIPs,
@@ -259,7 +301,7 @@ func (h *Handlers) GroupPCQSavePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dest := "/ui/groups/" + groupID + "/pcq"
+	dest := "/ui/queues/" + groupID
 
 	var n int
 	if err := h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_groups WHERE id = ?`, groupID).Scan(&n); err != nil || n == 0 {
@@ -269,11 +311,11 @@ func (h *Handlers) GroupPCQSavePost(w http.ResponseWriter, r *http.Request) {
 
 	if r.FormValue("clear_pcq") == "on" {
 		if _, err := h.svc.DB.Exec(`DELETE FROM vpn_group_pcq WHERE group_id = ?`, groupID); err != nil {
-			http.Redirect(w, r, dest+"?msg="+urlQueryEscape("Could not clear PCQ settings.")+"&msgType=error", http.StatusFound)
+			http.Redirect(w, r, dest+"?msg="+urlQueryEscape("Could not clear queue settings.")+"&msgType=error", http.StatusFound)
 			return
 		}
 		h.reconcilePCQ()
-		http.Redirect(w, r, dest+"?msg="+urlQueryEscape("PCQ settings cleared.")+"&msgType=success", http.StatusFound)
+		http.Redirect(w, r, dest+"?msg="+urlQueryEscape("Queue settings cleared.")+"&msgType=success", http.StatusFound)
 		return
 	}
 
@@ -319,22 +361,69 @@ func (h *Handlers) GroupPCQSavePost(w http.ResponseWriter, r *http.Request) {
 	`, groupID, dlSQL, ulSQL, bdSQL, buSQL, mode)
 
 	if err != nil {
-		http.Redirect(w, r, dest+"?msg="+urlQueryEscape("Could not save PCQ settings.")+"&msgType=error", http.StatusFound)
+		http.Redirect(w, r, dest+"?msg="+urlQueryEscape("Could not save queue settings.")+"&msgType=error", http.StatusFound)
 		return
 	}
 	h.reconcilePCQ()
-	http.Redirect(w, r, dest+"?msg="+urlQueryEscape("PCQ settings saved.")+"&msgType=success", http.StatusFound)
+	http.Redirect(w, r, dest+"?msg="+urlQueryEscape("Queue settings saved.")+"&msgType=success", http.StatusFound)
+}
+
+func (h *Handlers) GroupPCQTogglePost(w http.ResponseWriter, r *http.Request) {
+	groupID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if groupID == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	_ = r.ParseForm()
+	redirectTo := strings.TrimSpace(r.FormValue("redirect"))
+	if redirectTo == "" {
+		redirectTo = "/ui/queues/" + groupID
+	}
+
+	var current int
+	err := h.svc.DB.QueryRow(`SELECT is_disabled FROM vpn_group_pcq WHERE group_id = ?`, groupID).Scan(&current)
+	if err == sql.ErrNoRows {
+		http.Redirect(w, r, redirectTo+"?msg="+urlQueryEscape("No queue preset found for this group.")+"&msgType=error", http.StatusFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+
+	newVal := 0
+	if current == 0 {
+		newVal = 1
+	}
+	if _, err := h.svc.DB.Exec(
+		`UPDATE vpn_group_pcq SET is_disabled = ?, updated_at = datetime('now') WHERE group_id = ?`,
+		newVal, groupID,
+	); err != nil {
+		http.Redirect(w, r, redirectTo+"?msg="+urlQueryEscape("Could not update queue status.")+"&msgType=error", http.StatusFound)
+		return
+	}
+	h.reconcilePCQ()
+
+	msg := "Queue enabled."
+	if newVal == 1 {
+		msg = "Queue disabled."
+	}
+	http.Redirect(w, r, redirectTo+"?msg="+urlQueryEscape(msg)+"&msgType=success", http.StatusFound)
 }
 
 func (h *Handlers) reconcilePCQ() {
 	if h == nil || h.svc.DB == nil {
 		return
 	}
+	if h.svc.Config.PCQDisabled {
+		return
+	}
 	opts := pcq.ApplyOpts{
 		Debug:  h.svc.Config.Debug,
 		Logger: h.svc.Logger,
 	}
-	if _, err := pcq.Apply(h.svc.DB, h.svc.Config.WGInterface, h.svc.Config.PCQDisabled, opts); err != nil && h.svc.Logger == nil {
+	if _, err := pcq.Apply(h.svc.DB, h.svc.Config.WGInterface, false, opts); err != nil && h.svc.Logger == nil {
 		log.Printf("pcq.Apply: %v", err)
 	}
 }

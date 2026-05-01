@@ -1,0 +1,70 @@
+{{define "partials/remove_member_modal.tmpl"}}
+<div class="fixed inset-0 z-50 flex items-center justify-center">
+  <div
+    class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+    hx-get="/partials/empty"
+    hx-target="#modal-root"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div class="relative w-full max-w-md overflow-hidden rounded-md border border-[rgba(148,163,184,0.06)] bg-[var(--np-panel)] shadow-none">
+    <div class="flex items-start justify-between border-b border-[rgba(148,163,184,0.055)] px-6 py-4">
+      <div>
+        <div class="text-sm font-semibold text-gray-100">Remove Member</div>
+        <div class="text-xs text-gray-400">Remove from this group only</div>
+      </div>
+      <button
+        class="rounded p-1.5 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+        type="button"
+      >
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+
+    <div class="px-6 py-5">
+      <div class="rounded border border-red-900/35 bg-red-950/25 p-4">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 rounded-full bg-red-500/10 p-2 text-red-300">
+            <i data-lucide="user-minus" class="h-4 w-4" style="stroke-width:1.5"></i>
+          </div>
+          <div>
+            <div class="text-sm font-medium text-gray-100">Remove <span class="font-mono text-red-200">{{.Username}}</span>?</div>
+            <div class="mt-1 text-sm text-gray-400">
+              They will be removed from this group but their VPN account will not be affected.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 flex items-center gap-3">
+        <button
+          type="button"
+          class="flex-1 h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#152031] text-sm text-gray-200 hover:bg-[#1e2d42]"
+          hx-get="/partials/empty"
+          hx-target="#modal-root"
+          hx-swap="innerHTML"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="flex-1 h-9 rounded bg-red-600 text-sm font-medium text-white hover:bg-red-500"
+          hx-post="/ui/groups/{{.GroupID}}/members/{{.UserID}}/remove"
+          hx-target="#np-main"
+          hx-push-url="true"
+          hx-swap="innerHTML"
+        >
+          Remove
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () { try { lucide.createIcons(); } catch (e) {} })();
+</script>
+{{end}}

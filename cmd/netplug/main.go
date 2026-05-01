@@ -22,6 +22,7 @@ import (
 	"netplug-go/internal/assets"
 	"netplug-go/internal/db"
 	"netplug-go/internal/pcq"
+	"netplug-go/internal/view"
 	"netplug-go/internal/wireguard"
 	webstatic "netplug-go/web/static"
 )
@@ -91,6 +92,7 @@ func main() {
 		http.ServeFileFS(w, r, webstatic.FS(), webstatic.PlugIconPath())
 	})
 
+	view.SetPCQDisabled(cfg.PCQDisabled)
 	app.RegisterRoutes(r, svc)
 
 	server := &http.Server{
@@ -115,12 +117,14 @@ func main() {
 			log.Printf("wireguard startup: config not applied: %s", res.Text)
 		} else {
 			log.Printf("wireguard startup: interface is up")
-			if _, err := pcq.Apply(sqlDB, cfg.WGInterface, cfg.PCQDisabled, pcq.ApplyOpts{
-				Debug:  cfg.Debug,
-				Logger: svc.Logger,
-			}); err != nil {
-				if svc.Logger == nil {
-					log.Printf("pcq startup: %v", err)
+			if !cfg.PCQDisabled {
+				if _, err := pcq.Apply(sqlDB, cfg.WGInterface, false, pcq.ApplyOpts{
+					Debug:  cfg.Debug,
+					Logger: svc.Logger,
+				}); err != nil {
+					if svc.Logger == nil {
+						log.Printf("pcq startup: %v", err)
+					}
 				}
 			}
 		}

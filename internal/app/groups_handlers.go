@@ -2,7 +2,9 @@ package app
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"netplug-go/internal/view"
@@ -17,18 +19,14 @@ func (h *Handlers) GroupsPage(w http.ResponseWriter, r *http.Request) {
 		Name        string
 		Description string
 		MemberCount int
-		PCQSummary  string
 	}
 	rows, err := h.svc.DB.Query(`
 		SELECT
 			g.id,
 			g.name,
 			COALESCE(g.description, ''),
-			(SELECT COUNT(*) FROM vpn_group_members m WHERE m.group_id = g.id),
-			p.download_limit_kbps,
-			p.upload_limit_kbps
+			(SELECT COUNT(*) FROM vpn_group_members m WHERE m.group_id = g.id)
 		FROM vpn_groups g
-		LEFT JOIN vpn_group_pcq p ON p.group_id = g.id
 		ORDER BY g.name COLLATE NOCASE ASC
 		LIMIT 300
 	`)
@@ -41,12 +39,10 @@ func (h *Handlers) GroupsPage(w http.ResponseWriter, r *http.Request) {
 	var groups []row
 	for rows.Next() {
 		var g row
-		var dl, ul sql.NullInt64
-		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.MemberCount, &dl, &ul); err != nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.MemberCount); err != nil {
 			http.Error(w, "server error", http.StatusInternalServerError)
 			return
 		}
-		g.PCQSummary = pcqLimitsSummary(dl, ul)
 		groups = append(groups, g)
 	}
 	if err := rows.Err(); err != nil {
@@ -83,6 +79,10 @@ func (h *Handlers) GroupCreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/ui/groups/"+id, http.StatusFound)
+}
+
+func (h *Handlers) GroupAddModalPartial(w http.ResponseWriter, r *http.Request) {
+	view.RenderPartial(w, r, "partials/add_group_modal.tmpl", view.M{})
 }
 
 func nullIfEmptyStr(s string) any {
@@ -123,7 +123,7 @@ func (h *Handlers) GroupMemberAddPost(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := strings.TrimSpace(r.FormValue("vpn_user_id"))
 	if userID == "" {
-		http.Redirect(w, r, "/ui/groups/"+groupID, http.StatusFound)
+		redirectOrHTMX(w, r, "/ui/groups/"+groupID)
 		return
 	}
 	_, err := h.svc.DB.Exec(
@@ -131,11 +131,77 @@ func (h *Handlers) GroupMemberAddPost(w http.ResponseWriter, r *http.Request) {
 		groupID, userID,
 	)
 	if err != nil {
-		http.Redirect(w, r, "/ui/groups/"+groupID+"?msg="+urlQueryEscape("Could not add member.")+"&msgType=error", http.StatusFound)
+		redirectOrHTMX(w, r, "/ui/groups/"+groupID+"?msg="+urlQueryEscape("Could not add member.")+"&msgType=error")
 		return
 	}
 	h.reconcilePCQ()
-	http.Redirect(w, r, "/ui/groups/"+groupID, http.StatusFound)
+	redirectOrHTMX(w, r, "/ui/groups/"+groupID)
+}
+
+func (h *Handlers) GroupMemberBulkAddPost(w http.ResponseWriter, r *http.Request) {
+	groupID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if groupID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var n int
+	if err := h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_groups WHERE id = ?`, groupID).Scan(&n); err != nil || n == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	ids := r.Form["vpn_user_id"]
+	if len(ids) == 0 {
+		redirectOrHTMXWithToast(w, r, "/ui/groups/"+groupID, "danger", "Select at least one user.")
+		return
+	}
+	added := 0
+	for _, uid := range ids {
+		uid = strings.TrimSpace(uid)
+		if uid == "" {
+			continue
+		}
+		res, err := h.svc.DB.Exec(
+			`INSERT OR IGNORE INTO vpn_group_members (group_id, vpn_user_id) VALUES (?, ?)`,
+			groupID, uid,
+		)
+		if err != nil {
+			redirectOrHTMXWithToast(w, r, "/ui/groups/"+groupID, "danger", "Could not add members.")
+			return
+		}
+		ra, _ := res.RowsAffected()
+		added += int(ra)
+	}
+	h.reconcilePCQ()
+	msg := fmt.Sprintf("Added %d member(s).", added)
+	if added == 0 {
+		msg = "No new members added (selected users were already in this group)."
+	}
+	redirectOrHTMXWithToast(w, r, "/ui/groups/"+groupID, "success", msg)
+}
+
+func redirectOrHTMX(w http.ResponseWriter, r *http.Request, path string) {
+	redirectOrHTMXWithToast(w, r, path, "", "")
+}
+
+// redirectOrHTMXWithToast sets HX-Trigger toast when toastMsg is non-empty (HTMX responses only).
+func redirectOrHTMXWithToast(w http.ResponseWriter, r *http.Request, path string, toastType, toastMsg string) {
+	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
+		if strings.TrimSpace(toastMsg) != "" {
+			tt := strings.TrimSpace(toastType)
+			if tt == "" {
+				tt = "success"
+			}
+			w.Header().Set("HX-Trigger", `{"toast":{"type":`+strconv.Quote(tt)+`,"message":`+strconv.Quote(toastMsg)+`}}`)
+		}
+		w.Header().Set("HX-Redirect", path)
+		w.WriteHeader(http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, path, http.StatusFound)
 }
 
 func (h *Handlers) GroupMemberRemovePost(w http.ResponseWriter, r *http.Request) {
@@ -147,11 +213,46 @@ func (h *Handlers) GroupMemberRemovePost(w http.ResponseWriter, r *http.Request)
 	}
 	_, err := h.svc.DB.Exec(`DELETE FROM vpn_group_members WHERE group_id = ? AND vpn_user_id = ?`, groupID, userID)
 	if err != nil {
-		http.Redirect(w, r, "/ui/groups/"+groupID+"?msg="+urlQueryEscape("Could not remove member.")+"&msgType=error", http.StatusFound)
+		redirectOrHTMX(w, r, "/ui/groups/"+groupID+"?msg="+urlQueryEscape("Could not remove member.")+"&msgType=error")
 		return
 	}
 	h.reconcilePCQ()
-	http.Redirect(w, r, "/ui/groups/"+groupID, http.StatusFound)
+	redirectOrHTMX(w, r, "/ui/groups/"+groupID)
+}
+
+type groupPickUser struct {
+	ID       string
+	Username string
+	TunnelIP string
+}
+
+func queryUsersNotInGroup(db *sql.DB, groupID string) ([]groupPickUser, error) {
+	rows, err := db.Query(`
+		SELECT u.id, u.username, COALESCE(u.allowed_ips, '')
+		FROM vpn_users u
+		WHERE NOT EXISTS (
+			SELECT 1 FROM vpn_group_members m
+			WHERE m.group_id = ? AND m.vpn_user_id = u.id
+		)
+		ORDER BY u.username COLLATE NOCASE ASC
+		LIMIT 500
+	`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []groupPickUser
+	for rows.Next() {
+		var o groupPickUser
+		var allowed string
+		if err := rows.Scan(&o.ID, &o.Username, &allowed); err != nil {
+			return nil, err
+		}
+		o.TunnelIP = firstTunnelIPCIDR(allowed)
+		out = append(out, o)
+	}
+	return out, rows.Err()
 }
 
 func firstTunnelIPCIDR(allowedIPs string) string {
@@ -163,6 +264,66 @@ func firstTunnelIPCIDR(allowedIPs string) string {
 		s = strings.TrimSpace(s[:i])
 	}
 	return s
+}
+
+func (h *Handlers) GroupDeleteModalPartial(w http.ResponseWriter, r *http.Request) {
+	groupID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if groupID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var gName string
+	if err := h.svc.DB.QueryRow(`SELECT name FROM vpn_groups WHERE id = ? LIMIT 1`, groupID).Scan(&gName); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	view.RenderPartial(w, r, "partials/delete_group_modal.tmpl", view.M{
+		"GroupID":   groupID,
+		"GroupName": gName,
+	})
+}
+
+func (h *Handlers) GroupMemberRemoveModalPartial(w http.ResponseWriter, r *http.Request) {
+	groupID := strings.TrimSpace(chi.URLParam(r, "id"))
+	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
+	if groupID == "" || userID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var username string
+	if err := h.svc.DB.QueryRow(`SELECT username FROM vpn_users WHERE id = ? LIMIT 1`, userID).Scan(&username); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	view.RenderPartial(w, r, "partials/remove_member_modal.tmpl", view.M{
+		"GroupID":  groupID,
+		"UserID":   userID,
+		"Username": username,
+	})
+}
+
+func (h *Handlers) GroupAddMembersModalPartial(w http.ResponseWriter, r *http.Request) {
+	groupID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if groupID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var gName string
+	err := h.svc.DB.QueryRow(`SELECT name FROM vpn_groups WHERE id = ? LIMIT 1`, groupID).Scan(&gName)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	candidates, err := queryUsersNotInGroup(h.svc.DB, groupID)
+	if err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	view.RenderPartial(w, r, "partials/group_add_members_modal.tmpl", view.M{
+		"GroupID":     groupID,
+		"GroupName":   gName,
+		"Candidates":  candidates,
+	})
 }
 
 func (h *Handlers) GroupDetailPage(w http.ResponseWriter, r *http.Request) {
@@ -215,36 +376,6 @@ func (h *Handlers) GroupDetailPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	availRows, err := h.svc.DB.Query(`
-		SELECT u.id, u.username
-		FROM vpn_users u
-		WHERE NOT EXISTS (
-			SELECT 1 FROM vpn_group_members m
-			WHERE m.group_id = ? AND m.vpn_user_id = u.id
-		)
-		ORDER BY u.username COLLATE NOCASE ASC
-		LIMIT 500
-	`, groupID)
-	if err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
-		return
-	}
-	defer availRows.Close()
-
-	type opt struct {
-		ID       string
-		Username string
-	}
-	var addOptions []opt
-	for availRows.Next() {
-		var o opt
-		if err := availRows.Scan(&o.ID, &o.Username); err != nil {
-			http.Error(w, "server error", http.StatusInternalServerError)
-			return
-		}
-		addOptions = append(addOptions, o)
-	}
-
 	msg := strings.TrimSpace(r.URL.Query().Get("msg"))
 	msgType := strings.TrimSpace(r.URL.Query().Get("msgType"))
 
@@ -254,7 +385,6 @@ func (h *Handlers) GroupDetailPage(w http.ResponseWriter, r *http.Request) {
 		"GroupName":    gName,
 		"GroupDesc":    gDesc,
 		"Members":      members,
-		"AddUserOpts":  addOptions,
 		"FlashMsg":     msg,
 		"FlashMsgType": msgType,
 	})

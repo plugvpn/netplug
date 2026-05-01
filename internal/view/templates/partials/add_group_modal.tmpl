@@ -1,0 +1,77 @@
+{{define "partials/add_group_modal.tmpl"}}
+<div class="fixed inset-0 z-50 flex items-center justify-center">
+  <div
+    class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+    hx-get="/partials/empty"
+    hx-target="#modal-root"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div class="relative w-full max-w-md overflow-hidden rounded-md border border-[rgba(148,163,184,0.06)] bg-[var(--np-panel)] shadow-none max-h-[calc(100vh-3rem)]">
+    <div class="flex items-start justify-between border-b border-[rgba(148,163,184,0.055)] px-6 py-4">
+      <div>
+        <div class="text-sm font-semibold text-gray-100">Create New Group</div>
+        <div class="text-xs text-gray-400">Organize VPN users</div>
+      </div>
+      <button
+        class="rounded p-1.5 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200"
+        hx-get="/partials/empty"
+        hx-target="#modal-root"
+        hx-swap="innerHTML"
+        type="button"
+      >
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+
+    <form method="post" action="/ui/groups" class="space-y-4 overflow-y-auto px-6 py-4" style="max-height: calc(100vh - 11rem);">
+      <div>
+        <label class="mb-2 block text-xs font-medium text-gray-300">Name *</label>
+        <div class="flex items-center gap-2">
+          <div class="flex h-9 w-9 items-center justify-center rounded border border-[rgba(148,163,184,0.09)] bg-[#1e2d42] text-gray-400">
+            <i data-lucide="users" class="h-4 w-4" style="stroke-width:1.5"></i>
+          </div>
+          <input
+            name="name"
+            placeholder="e.g. Backend team"
+            class="flex-1 h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#0a0d12] px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            required
+            autocomplete="off"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label class="mb-2 block text-xs font-medium text-gray-300">Description (optional)</label>
+        <textarea
+          name="description"
+          rows="3"
+          placeholder="Short note for this group"
+          class="w-full resize-none rounded border border-[rgba(148,163,184,0.09)] bg-[#0a0d12] px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+        ></textarea>
+      </div>
+
+      <div class="flex justify-end gap-2 border-t border-[rgba(148,163,184,0.06)] pt-4">
+        <button
+          type="button"
+          class="rounded-lg border border-gray-600 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-[#1e2d42] dark:border-[rgba(148,163,184,0.085)]"
+          hx-get="/partials/empty"
+          hx-target="#modal-root"
+          hx-swap="innerHTML"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          class="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:from-emerald-600 hover:to-teal-600"
+        >
+          Create group
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+  try { lucide.createIcons(); } catch (e) {}
+</script>
+{{end}}

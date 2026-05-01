@@ -30,6 +30,7 @@ RUN apk add --no-cache \
     iptables \
     sqlite \
     iproute2 \
+    openresolv \
     ca-certificates
 
 # Traffic control CLI: `/sbin/tc` is provided by Alpine's iproute2 (listed above).
