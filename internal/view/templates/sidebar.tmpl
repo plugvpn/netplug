@@ -18,6 +18,10 @@
       background-color: rgba(16, 185, 129, 0.15);
       color: rgb(209 250 229);
     }
+
+    /* Disabled sidebar item tooltip */
+    .sb-disabled-item { position: relative; }
+    .sb-disabled-item .sb-tooltip { display: none; }
   </style>
 
   <div class="relative flex h-16 items-center gap-3 border-b border-gray-200 dark:border-[rgba(148,163,184,0.06)] px-6">
@@ -44,6 +48,12 @@
     {{template "sidebar_item.tmpl" dict "Href" "/ui" "Label" "Overview" "Icon" "layout-dashboard" "Active" (eq .Path "/ui") }}
     {{template "sidebar_item.tmpl" dict "Href" "/ui/connections" "Label" "Connections" "Icon" "link-2" "Active" (eq .Path "/ui/connections") }}
     {{template "sidebar_item.tmpl" dict "Href" "/ui/users" "Label" "Users" "Icon" "users" "Active" (eq .Path "/ui/users") }}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui/groups" "Label" "Groups" "Icon" "users-round" "Active" (or (eq .Path "/ui/groups") (hasPrefix .Path "/ui/groups/")) }}
+    {{if .PCQDisabled}}
+    {{template "sidebar_item_disabled.tmpl" dict "Label" "Queues" "Icon" "sliders-horizontal" "Tooltip" "Queues is disabled"}}
+    {{else}}
+    {{template "sidebar_item.tmpl" dict "Href" "/ui/queues" "Label" "Queues" "Icon" "sliders-horizontal" "Active" (or (eq .Path "/ui/queues") (hasPrefix .Path "/ui/queues/")) }}
+    {{end}}
     {{template "sidebar_item.tmpl" dict "Href" "/ui/wireguard" "Label" "Wireguard" "Icon" "server" "Active" (eq .Path "/ui/wireguard") }}
   </nav>
 
@@ -80,6 +90,45 @@
     </div>
   </div>
 </aside>
+<script>
+  (function () {
+    // Create a single global tooltip node directly on <body> to escape all stacking contexts.
+    var globalTip = document.createElement('div');
+    globalTip.style.cssText = [
+      'position:fixed',
+      'z-index:999999',
+      'display:none',
+      'white-space:nowrap',
+      'background:#1e293b',
+      'color:#f8b94b',
+      'font-size:0.72rem',
+      'font-weight:500',
+      'padding:5px 10px',
+      'border-radius:6px',
+      'border:1px solid rgba(251,191,36,0.25)',
+      'pointer-events:none',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.5)',
+    ].join(';');
+    document.body.appendChild(globalTip);
+
+    document.querySelectorAll('.sb-disabled-item').forEach(function (item) {
+      var src = item.querySelector('.sb-tooltip');
+      var text = src ? src.textContent.trim() : '';
+      if (!text) return;
+
+      item.addEventListener('mouseenter', function () {
+        globalTip.textContent = text;
+        globalTip.style.display = 'block';
+        var r = item.getBoundingClientRect();
+        globalTip.style.top  = Math.round(r.top + r.height / 2 - globalTip.offsetHeight / 2) + 'px';
+        globalTip.style.left = Math.round(r.right + 10) + 'px';
+      });
+      item.addEventListener('mouseleave', function () {
+        globalTip.style.display = 'none';
+      });
+    });
+  })();
+</script>
 {{end}}
 
 {{define "sidebar_item.tmpl"}}
@@ -95,4 +144,15 @@
   <i data-lucide="{{.Icon}}" class="h-4 w-4" style="stroke-width:1.5"></i>
   <span class="sb-hide">{{.Label}}</span>
 </a>
+{{end}}
+
+{{define "sidebar_item_disabled.tmpl"}}
+<div
+  class="sb-disabled-item flex items-center gap-3 rounded px-3 py-2.5 text-sm font-normal sb-center cursor-not-allowed opacity-40 select-none"
+  style="color: rgb(156 163 175);"
+>
+  <i data-lucide="{{.Icon}}" class="h-4 w-4 shrink-0" style="stroke-width:1.5"></i>
+  <span class="sb-hide flex-1">{{.Label}}</span>
+  <span class="sb-tooltip">{{.Tooltip}}</span>
+</div>
 {{end}}

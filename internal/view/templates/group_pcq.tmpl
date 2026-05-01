@@ -1,0 +1,155 @@
+{{define "group_pcq.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "group_pcq.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="mb-6 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <h2 class="text-2xl font-semibold text-gray-100">Queue — {{.GroupName}}</h2>
+          <p class="mt-1 text-sm text-gray-400">
+            Rate limits on <code class="text-xs text-gray-500">{{.WGInterface}}</code> via <code class="text-xs text-gray-500">tc</code> —
+            {{.MemberTunnelIPsCount}} tunnel peer(s) in this group.
+            {{if .IsDisabled}}<span class="ml-1 inline-flex items-center gap-1 text-amber-400"><i data-lucide="pause-circle" class="h-3.5 w-3.5" style="stroke-width:2"></i>Shaping disabled.</span>{{end}}
+          </p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <a
+            href="/ui/groups/{{.GroupID}}"
+            class="inline-flex items-center gap-2 rounded-lg border border-[rgba(148,163,184,0.12)] bg-[var(--np-muted)] px-3 py-2 text-sm font-medium text-gray-200 shadow-sm transition-colors hover:border-emerald-500/25 hover:bg-emerald-500/[0.08] hover:text-emerald-200"
+            hx-get="/ui/groups/{{.GroupID}}"
+            hx-target="#np-main"
+            hx-push-url="true"
+            hx-swap="innerHTML"
+          >
+            <i data-lucide="users" class="h-4 w-4 text-emerald-400/90" style="stroke-width:1.5"></i>
+            Group members
+          </a>
+          {{if .HasPreset}}
+          <form method="post" action="/ui/queues/{{.GroupID}}/toggle">
+            {{if .IsDisabled}}
+            <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500">
+              <i data-lucide="play" class="h-4 w-4" style="stroke-width:2"></i>
+              Enable queue
+            </button>
+            {{else}}
+            <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-amber-600/80 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-600">
+              <i data-lucide="pause" class="h-4 w-4" style="stroke-width:2"></i>
+              Disable queue
+            </button>
+            {{end}}
+          </form>
+          {{end}}
+        </div>
+      </div>
+
+      {{if .PCQDisabled}}
+      <div class="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-950/30 px-4 py-4 text-sm text-amber-200">
+        <i data-lucide="alert-triangle" class="mt-0.5 h-4 w-4 shrink-0 text-amber-400" style="stroke-width:2"></i>
+        <div>
+          <p class="font-semibold text-amber-300">Queue shaping is disabled</p>
+          <p class="mt-0.5 text-amber-300/70">
+            <code class="text-xs font-mono text-amber-400">NETPLUG_PCQ_DISABLE=1</code> is set — no <code class="text-xs font-mono text-amber-400">tc</code> rules are applied.
+            Presets can still be saved here.
+          </p>
+        </div>
+      </div>
+      {{end}}
+
+      {{if .FlashMsg}}
+      <div class="mb-6 rounded-lg border px-4 py-3 text-sm {{if eq .FlashMsgType "error"}}border-red-500/40 bg-red-950/40 text-red-200{{else}}border-emerald-500/30 bg-emerald-950/30 text-emerald-200{{end}}">
+        {{.FlashMsg}}
+      </div>
+      {{end}}
+
+      <div class="mb-8 overflow-hidden rounded border border-[rgba(148,163,184,0.055)]{{if .IsDisabled}} opacity-50 pointer-events-none select-none{{end}}" style="background-color:var(--np-panel);">
+        <div class="border-b border-[rgba(148,163,184,0.06)] bg-gradient-to-r from-[var(--np-raised)] to-[var(--np-panel)] p-6">
+          <h3 class="text-base font-normal text-white">Rates &amp; classifier</h3>
+        </div>
+        <div class="border-b border-[rgba(148,163,184,0.045)] bg-[var(--np-panel)] p-6">
+          <p class="mb-6 text-sm text-gray-600 dark:text-gray-400">
+            Mbps per direction; blank means no cap here. Classifier picks which counters this group&apos;s preset uses. Effective caps when applying are merged with other groups (minimum wins per tunnel peer).
+          </p>
+          <form method="post" action="/ui/queues/{{.GroupID}}" class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-400 dark:text-gray-400">Download (Mbps)</label>
+              <input name="download_mbps" value="{{.DownloadMbpsInput}}" type="number" step="any" min="0" placeholder="e.g. 20"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-400 dark:text-gray-400">Upload (Mbps)</label>
+              <input name="upload_mbps" value="{{.UploadMbpsInput}}" type="number" step="any" min="0" placeholder="e.g. 5"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-400 dark:text-gray-400">Burst download (Mbps, optional)</label>
+              <input name="burst_download_mbps" value="{{.BurstDownloadInput}}" type="number" step="any" min="0"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-400 dark:text-gray-400">Burst upload (Mbps, optional)</label>
+              <input name="burst_upload_mbps" value="{{.BurstUploadInput}}" type="number" step="any" min="0"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100" />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="mb-1 block text-xs font-medium text-gray-400 dark:text-gray-400">Classifier mode</label>
+              <select name="pcq_classifier" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100">
+                <option value="dual" {{if eq .ClassifierMode "dual"}}selected{{end}}>Dual — download: dst-address, upload: src-address</option>
+                <option value="dst-download" {{if eq .ClassifierMode "dst-download"}}selected{{end}}>Emphasize dst-address (download path)</option>
+                <option value="src-upload" {{if eq .ClassifierMode "src-upload"}}selected{{end}}>Emphasize src-address (upload path)</option>
+              </select>
+            </div>
+            <div class="flex flex-wrap items-center gap-4 pt-2 sm:col-span-2">
+              <button type="submit" class="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600">
+                Save queue preset
+              </button>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <input type="checkbox" name="clear_pcq" value="on" class="rounded border-gray-600" />
+                Clear saved queue preset for this group
+              </label>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="overflow-hidden rounded border border-[rgba(148,163,184,0.055)]" style="background-color:var(--np-panel);">
+        <button
+          type="button"
+          id="tc-preview-toggle"
+          onclick="toggleTCPreview()"
+          class="flex w-full items-center justify-between border-b border-[rgba(148,163,184,0.06)] bg-gradient-to-r from-[var(--np-raised)] to-[var(--np-panel)] p-6 text-left transition-colors hover:bg-[rgba(148,163,184,0.03)]"
+        >
+          <h3 class="text-base font-normal text-white">Linux tc preview</h3>
+          <i id="tc-preview-chevron" data-lucide="chevron-down" class="h-4 w-4 text-gray-400 transition-transform duration-200" style="transform:rotate(-180deg)"></i>
+        </button>
+        <div id="tc-preview-body" style="display:none; background-color:var(--np-panel); scrollbar-width:thin; scrollbar-color:#374151 var(--np-panel);" class="overflow-x-auto p-6">
+          <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            Example <code class="text-xs text-gray-500 dark:text-gray-500">tc</code> lines generated from this group&apos;s saved preset for members&apos; tunnel IPv4s—not the full iface apply (no teardown prelude). Actual runs merge all groups&apos; presets and execute after edits, membership changes, and WireGuard reloads.
+          </p>
+          <pre class="max-h-96 overflow-auto rounded-lg border border-[rgba(148,163,184,0.09)] bg-[#080d12] p-4 text-xs leading-relaxed font-mono text-gray-200 whitespace-pre-wrap">{{.LinuxTCPreview}}</pre>
+        </div>
+      </div>
+      <script>
+        (function () {
+          var open = false;
+          function toggleTCPreview() {
+            open = !open;
+            var body    = document.getElementById('tc-preview-body');
+            var chevron = document.getElementById('tc-preview-chevron');
+            if (!body || !chevron) return;
+            body.style.display = open ? '' : 'none';
+            chevron.style.transform = open ? 'rotate(0deg)' : 'rotate(-180deg)';
+          }
+          window.toggleTCPreview = toggleTCPreview;
+        })();
+      </script>
+    </div>
+  </div>
+  <div id="modal-root"></div>
+</div>
+{{end}}
+
+{{define "group_pcq.header_right"}}{{end}}

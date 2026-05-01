@@ -1,0 +1,156 @@
+{{define "groups.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "groups.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">VPN Groups</h2>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Organize VPN users into groups for easier access management
+          </p>
+        </div>
+        <button
+          class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600"
+          hx-get="/partials/groups/add-modal"
+          hx-target="#modal-root"
+          hx-swap="innerHTML"
+          type="button"
+        >
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          Add Group
+        </button>
+      </div>
+
+      {{if .FlashMsg}}
+      <div class="mb-6 rounded-lg border px-4 py-3 text-sm {{if eq .FlashMsgType "error"}}border-red-500/40 bg-red-950/40 text-red-200{{else}}border-emerald-500/30 bg-emerald-950/30 text-emerald-200{{end}}">
+        {{.FlashMsg}}
+      </div>
+      {{end}}
+
+      {{if .Groups}}
+      <div class="mb-6">
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+          <input
+            id="groups-search"
+            type="text"
+            placeholder="Search by group name, description, or member count..."
+            class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100 dark:placeholder-gray-500"
+          />
+        </div>
+      </div>
+      {{end}}
+
+      <div class="overflow-hidden rounded border border-[rgba(148,163,184,0.055)]" style="background-color:var(--np-panel);">
+        <div class="border-b border-[rgba(148,163,184,0.06)] bg-gradient-to-r from-[var(--np-raised)] to-[var(--np-panel)] p-6">
+          <h3 class="text-base font-normal text-white">All Groups ({{len .Groups}})</h3>
+        </div>
+        <style>
+          tr.groups-row {
+            transition: background-color 0.15s ease-out;
+          }
+          tr.groups-row:nth-child(odd) {
+            background-color: var(--np-panel);
+          }
+          tr.groups-row:nth-child(even) {
+            background-color: #0a0d12;
+          }
+          tr.groups-row:hover {
+            background-color: rgba(148, 163, 184, 0.065) !important;
+          }
+        </style>
+        <div class="overflow-x-auto" style="background-color:var(--np-panel); scrollbar-width:thin; scrollbar-color:#374151 var(--np-panel);">
+          <table class="w-full" style="background-color:var(--np-panel);">
+            <thead style="background-color:var(--np-raised);">
+              <tr class="border-b border-[rgba(148,163,184,0.07)] text-left text-sm font-medium text-gray-300 dark:text-gray-400">
+                <th class="px-6 py-3">Group</th>
+                <th class="px-6 py-3">Members</th>
+                <th class="px-6 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[rgba(148,163,184,0.045)]" style="background-color:var(--np-panel);">
+              {{if not .Groups}}
+              <tr>
+                <td class="px-6 py-6 text-sm text-gray-500 dark:text-gray-500" colspan="3">
+                  No groups yet. Use <span class="font-medium text-emerald-400">Add Group</span> to create one.
+                </td>
+              </tr>
+              {{end}}
+              {{range .Groups}}
+              <tr
+                class="groups-row"
+                data-name="{{lower .Name}}"
+                data-desc="{{lower .Description}}"
+                data-members="{{.MemberCount}}"
+              >
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-700 dark:bg-[var(--np-muted)]">
+                      <i data-lucide="folder" class="h-5 w-5 text-gray-300 dark:text-gray-400"></i>
+                    </div>
+                    <div class="min-w-0">
+                      <p class="font-medium text-gray-100 dark:text-gray-100">{{.Name}}</p>
+                      {{if .Description}}
+                        <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-500">{{.Description}}</p>
+                      {{end}}
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="text-sm text-gray-300 dark:text-gray-400">{{.MemberCount}}</span>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center justify-end gap-2">
+                    <a
+                      href="/ui/groups/{{.ID}}"
+                      class="rounded-lg bg-emerald-500/15 p-2 text-emerald-400 transition-colors hover:bg-emerald-500/25 hover:text-emerald-300"
+                      title="Group details"
+                      hx-get="/ui/groups/{{.ID}}"
+                      hx-target="#np-main"
+                      hx-push-url="true"
+                      hx-swap="innerHTML"
+                    >
+                      <i data-lucide="folder-open" class="h-4 w-4"></i>
+                    </a>
+                  </div>
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="modal-root"></div>
+</div>
+<script>
+  (function () {
+    const input = document.getElementById('groups-search');
+    if (!input) return;
+
+    function norm(s) {
+      return (s || '').toString().toLowerCase().trim();
+    }
+
+    input.addEventListener('input', function () {
+      const q = norm(input.value);
+      const rows = document.querySelectorAll('tr.groups-row');
+      rows.forEach(function (row) {
+        const name = norm(row.getAttribute('data-name'));
+        const desc = norm(row.getAttribute('data-desc'));
+        const members = norm(row.getAttribute('data-members'));
+        const ok = !q || name.includes(q) || desc.includes(q) || members.includes(q);
+        row.style.display = ok ? '' : 'none';
+      });
+    });
+  })();
+</script>
+{{end}}
+
+{{define "groups.header_right"}}{{end}}
