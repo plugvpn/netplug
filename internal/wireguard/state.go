@@ -110,7 +110,7 @@ func SaveWireGuardState(sqlDB *sql.DB, dataDir string, configuredInterface strin
 	}
 
 	writeErr := WriteWireGuardConfig(sqlDB, dataDir)
-	appliedErr := ApplyConfig(dataDir, configuredInterface)
+	appliedErr := ApplyAllWireGuardConfigs(sqlDB, dataDir, configuredInterface)
 
 	res := SaveResult{
 		Type:        "success",
@@ -133,7 +133,7 @@ func ReloadWireGuard(sqlDB *sql.DB, dataDir string, configuredInterface string) 
 	if err := WriteWireGuardConfig(sqlDB, dataDir); err != nil {
 		return SaveResult{}, err
 	}
-	if err := ApplyConfig(dataDir, configuredInterface); err != nil {
+	if err := ApplyAllWireGuardConfigs(sqlDB, dataDir, configuredInterface); err != nil {
 		return SaveResult{}, err
 	}
 	return SaveResult{Type: "success", Text: "WireGuard configuration reloaded.", WroteConfig: true, Applied: true}, nil

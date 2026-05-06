@@ -396,11 +396,10 @@ func (h *Handlers) SetupWireGuardPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
 	}
-	if err := wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir); err != nil {
-		http.Error(w, "failed to write wg0.conf", http.StatusInternalServerError)
+	if err := wireguard.WriteAndApplyAll(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface); err != nil {
+		http.Error(w, "failed to write WireGuard configuration", http.StatusInternalServerError)
 		return
 	}
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
 	h.reconcilePCQ()
 
 	http.Redirect(w, r, "/ui", http.StatusFound)
@@ -584,11 +583,10 @@ func (h *Handlers) SetupWireGuardImportPost(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := wireguard.WriteWireGuardConfig(h.svc.DB, dataDir); err != nil {
-		http.Error(w, "failed to write wg0.conf", http.StatusInternalServerError)
+	if err := wireguard.WriteAndApplyAll(h.svc.DB, dataDir, h.svc.Config.WGInterface); err != nil {
+		http.Error(w, "failed to write WireGuard configuration", http.StatusInternalServerError)
 		return
 	}
-	_ = wireguard.ApplyConfig(dataDir, h.svc.Config.WGInterface)
 	h.reconcilePCQ()
 	http.Redirect(w, r, "/ui", http.StatusFound)
 }
@@ -935,27 +933,43 @@ func relativeAgoLastHandshake(lastHS, connectedAt sql.NullString) string {
 }
 
 func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.svc.DB.Query(`
+	filterServer := strings.TrimSpace(r.URL.Query().Get("server"))
+	sortKey := strings.TrimSpace(r.URL.Query().Get("sort"))
+	if sortKey == "" {
+		sortKey = "username"
+	}
+	sortDir := strings.TrimSpace(r.URL.Query().Get("dir"))
+	if sortDir != "desc" {
+		sortDir = "asc"
+	}
+
+	orderSQL := usersOrderByClause(sortKey, sortDir)
+	q := `
 		SELECT
-			id,
-			username,
-			allowed_ips,
-			endpoint,
-			is_enabled,
-			is_connected,
-			bytes_received,
-			bytes_sent,
-			total_bytes_received,
-			total_bytes_sent,
-			remaining_days,
-			remaining_traffic_bytes,
-			connected_at,
-			last_handshake,
-			peer_icon
-		FROM vpn_users
-		ORDER BY username ASC
+			u.id,
+			u.username,
+			u.allowed_ips,
+			u.endpoint,
+			u.is_enabled,
+			u.is_connected,
+			u.bytes_received,
+			u.bytes_sent,
+			u.total_bytes_received,
+			u.total_bytes_sent,
+			u.remaining_days,
+			u.remaining_traffic_bytes,
+			u.connected_at,
+			u.last_handshake,
+			u.peer_icon,
+			IFNULL(s.name, ''),
+			IFNULL(s.wg_interface, '')
+		FROM vpn_users u
+		LEFT JOIN vpn_servers s ON s.id = u.server_id
+		WHERE (TRIM(?) = '' OR u.server_id = ?)
+		ORDER BY ` + orderSQL + `
 		LIMIT 500
-	`)
+	`
+	rows, err := h.svc.DB.Query(q, filterServer, filterServer)
 	if err != nil {
 		http.Error(w, "server error", http.StatusInternalServerError)
 		return
@@ -978,6 +992,8 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 		ConnectedAt           string
 		LastHandshakeAgo      string
 		PeerIcon              string
+		WGServerName          string
+		WGInterface           string
 	}
 	var users []userRow
 	for rows.Next() {
@@ -1007,6 +1023,8 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 			&connectedAt,
 			&lastHandshake,
 			&peerIcon,
+			&u.WGServerName,
+			&u.WGInterface,
 		); err != nil {
 			http.Error(w, "server error", http.StatusInternalServerError)
 			return
@@ -1020,7 +1038,6 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 		}
 		u.LastHandshakeAgo = relativeAgoLastHandshake(lastHandshake, connectedAt)
 		if allowedIPs.Valid {
-			// First IP/CIDR is the peer tunnel address.
 			first := strings.TrimSpace(allowedIPs.String)
 			if i := strings.IndexByte(first, ','); i >= 0 {
 				first = strings.TrimSpace(first[:i])
@@ -1048,9 +1065,87 @@ func (h *Handlers) UsersPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	base := url.Values{}
+	if filterServer != "" {
+		base.Set("server", filterServer)
+	}
+	sortHref := func(col string) string {
+		v := url.Values{}
+		for k, vals := range base {
+			for _, x := range vals {
+				v.Add(k, x)
+			}
+		}
+		v.Set("sort", col)
+		if sortKey == col {
+			if sortDir == "asc" {
+				v.Set("dir", "desc")
+			} else {
+				v.Set("dir", "asc")
+			}
+		} else {
+			v.Set("dir", "asc")
+		}
+		return "/ui/users?" + strings.ReplaceAll(v.Encode(), "+", "%20")
+	}
+
+	iconFor := func(col string) string {
+		if sortKey != col {
+			return ""
+		}
+		if sortDir == "desc" {
+			return "↓"
+		}
+		return "↑"
+	}
+
+	var wgServers []struct {
+		ID        string
+		Name      string
+		Interface string
+	}
+	srvRows, qerr := h.svc.DB.Query(`
+		SELECT id, name, IFNULL(TRIM(wg_interface), '')
+		FROM vpn_servers
+		WHERE protocol = 'wireguard' AND is_active = 1
+		ORDER BY name COLLATE NOCASE ASC
+	`)
+	if qerr == nil {
+		defer srvRows.Close()
+		for srvRows.Next() {
+			var id, name, iface string
+			if err := srvRows.Scan(&id, &name, &iface); err != nil {
+				break
+			}
+			wgServers = append(wgServers, struct {
+				ID        string
+				Name      string
+				Interface string
+			}{ID: id, Name: name, Interface: iface})
+		}
+	}
+
 	view.Render(w, r, "users.tmpl", view.M{
-		"Title": "Users",
-		"Users": users,
+		"Title":               "Users",
+		"Users":               users,
+		"FilterServer":        filterServer,
+		"CurrentSort":         sortKey,
+		"CurrentDir":          sortDir,
+		"WireGuardServers":    wgServers,
+		"SortHrefUsername":    sortHref("username"),
+		"SortHrefInterface":   sortHref("interface"),
+		"SortHrefIP":          sortHref("ip"),
+		"SortHrefStatus":      sortHref("status"),
+		"SortHrefUsage":       sortHref("usage"),
+		"SortHrefRemDays":     sortHref("rem_days"),
+		"SortHrefRemTraffic":  sortHref("rem_traffic"),
+		"SortIconUsername":    iconFor("username"),
+		"SortIconInterface":   iconFor("interface"),
+		"SortIconIP":          iconFor("ip"),
+		"SortIconStatus":      iconFor("status"),
+		"SortIconUsage":       iconFor("usage"),
+		"SortIconRemDays":     iconFor("rem_days"),
+		"SortIconRemTraffic":  iconFor("rem_traffic"),
 	})
 }
 
@@ -1066,11 +1161,21 @@ func (h *Handlers) UserCreatePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vpnIP := strings.TrimSpace(r.FormValue("vpn_ip"))
+	serverID := strings.TrimSpace(r.FormValue("server_id"))
+	if serverID == "" {
+		serverID = "wireguard"
+	}
+	var srvProto string
+	if err := h.svc.DB.QueryRow(`SELECT protocol FROM vpn_servers WHERE id = ? LIMIT 1`, serverID).Scan(&srvProto); err != nil || srvProto != "wireguard" {
+		http.Error(w, "invalid WireGuard server", http.StatusBadRequest)
+		return
+	}
+
 	if vpnIP == "" {
 		vpnIP = strings.TrimSpace(r.FormValue("allowed_ips"))
 	}
 	if vpnIP == "" {
-		alloc, err := wireguard.NextClientAllowedIP(h.svc.DB)
+		alloc, err := wireguard.NextClientAllowedIPForServer(h.svc.DB, serverID)
 		if err != nil {
 			http.Error(w, "ip allocation failed", http.StatusInternalServerError)
 			return
@@ -1135,16 +1240,14 @@ func (h *Handlers) UserCreatePost(w http.ResponseWriter, r *http.Request) {
 		  remaining_days, remaining_traffic_bytes,
 		  server_id, is_enabled
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'wireguard', ?)
-	`, id, username, allowedIPs, privateKey, publicKey, nullIfEmpty(psk), remainingDays, remainingTrafficBytes, isEnabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, id, username, allowedIPs, privateKey, publicKey, nullIfEmpty(psk), remainingDays, remainingTrafficBytes, serverID, isEnabled)
 	if err != nil {
 		http.Error(w, "create failed", http.StatusInternalServerError)
 		return
 	}
 
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
-	h.reconcilePCQ()
+	h.applyWireGuardKernel()
 
 	http.Redirect(w, r, "/ui/users", http.StatusFound)
 }
@@ -1157,9 +1260,40 @@ func nullIfEmpty(s string) any {
 }
 
 func (h *Handlers) AddUserModalPartial(w http.ResponseWriter, r *http.Request) {
-	nextIP, _ := wireguard.NextClientAllowedIP(h.svc.DB)
+	defServer := strings.TrimSpace(r.URL.Query().Get("server_id"))
+	if defServer == "" {
+		defServer = "wireguard"
+	}
+	nextIP, _ := wireguard.NextClientAllowedIPForServer(h.svc.DB, defServer)
+	var wgServers []struct {
+		ID        string
+		Name      string
+		Interface string
+	}
+	rows, err := h.svc.DB.Query(`
+		SELECT id, name, IFNULL(TRIM(wg_interface), '')
+		FROM vpn_servers
+		WHERE protocol = 'wireguard' AND is_active = 1
+		ORDER BY name COLLATE NOCASE ASC
+	`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, name, iface string
+			if err := rows.Scan(&id, &name, &iface); err != nil {
+				break
+			}
+			wgServers = append(wgServers, struct {
+				ID        string
+				Name      string
+				Interface string
+			}{ID: id, Name: name, Interface: iface})
+		}
+	}
 	view.RenderPartial(w, r, "partials/add_user_modal.tmpl", view.M{
-		"NextIP": nextIP,
+		"NextIP":           nextIP,
+		"WireGuardServers": wgServers,
+		"DefaultServerID":  defServer,
 	})
 }
 
@@ -1346,9 +1480,7 @@ func (h *Handlers) UserUpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
-	h.reconcilePCQ()
+	h.applyWireGuardKernel()
 
 	// Close modal and show a toast; then refresh list.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1397,9 +1529,7 @@ func (h *Handlers) UserDeletePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
-	h.reconcilePCQ()
+	h.applyWireGuardKernel()
 
 	msg := "User deleted."
 	if strings.TrimSpace(username) != "" {
@@ -1543,7 +1673,11 @@ func (h *Handlers) UsersGeneratePSKAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UsersNextIPAPI(w http.ResponseWriter, r *http.Request) {
-	ip, err := wireguard.NextClientAllowedIP(h.svc.DB)
+	sid := strings.TrimSpace(r.URL.Query().Get("server_id"))
+	if sid == "" {
+		sid = "wireguard"
+	}
+	ip, err := wireguard.NextClientAllowedIPForServer(h.svc.DB, sid)
 	if err != nil {
 		http.Error(w, `{"error":"failed"}`, http.StatusInternalServerError)
 		return
@@ -1568,9 +1702,7 @@ func (h *Handlers) UserTogglePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "update failed", http.StatusInternalServerError)
 		return
 	}
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
-	h.reconcilePCQ()
+	h.applyWireGuardKernel()
 
 	http.Redirect(w, r, "/ui/users", http.StatusFound)
 }
@@ -1653,6 +1785,37 @@ func (h *Handlers) WireGuardPage(w http.ResponseWriter, r *http.Request) {
 	msg := strings.TrimSpace(r.URL.Query().Get("msg"))
 	msgType := strings.TrimSpace(r.URL.Query().Get("msgType"))
 
+	type wgExtraRow struct {
+		ID           string
+		Name         string
+		Host         string
+		Port         int
+		ConfigPath   string
+		WGInterface  string
+		ServerTunnel string
+		ClientRange  string
+	}
+	var extras []wgExtraRow
+	exRows, qerr := h.svc.DB.Query(`
+		SELECT id, name, host, COALESCE(port, 0), IFNULL(config_path, ''),
+		       IFNULL(TRIM(wg_interface), ''), IFNULL(TRIM(wg_server_address), ''), IFNULL(TRIM(wg_client_range), '')
+		FROM vpn_servers
+		WHERE protocol = 'wireguard' AND is_active = 1 AND id <> 'wireguard'
+		ORDER BY name COLLATE NOCASE ASC
+	`)
+	if qerr == nil {
+		defer exRows.Close()
+		for exRows.Next() {
+			var x wgExtraRow
+			var port int
+			if err := exRows.Scan(&x.ID, &x.Name, &x.Host, &port, &x.ConfigPath, &x.WGInterface, &x.ServerTunnel, &x.ClientRange); err != nil {
+				break
+			}
+			x.Port = port
+			extras = append(extras, x)
+		}
+	}
+
 	view.Render(w, r, "wireguard.tmpl", view.M{
 		"Title":               "Wireguard",
 		"WGConfig":            cfg,
@@ -1662,7 +1825,68 @@ func (h *Handlers) WireGuardPage(w http.ResponseWriter, r *http.Request) {
 		"TunnelUptimeSeconds": tunUp,
 		"SaveMessage":         msg,
 		"SaveMessageType":     msgType,
+		"ExtraWGInterfaces":   extras,
 	})
+}
+
+func (h *Handlers) WireGuardInterfaceCreatePost(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("invalid form"), http.StatusFound)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("iface_name"))
+	host := strings.TrimSpace(r.FormValue("iface_host"))
+	port := mustAtoi(r.FormValue("iface_port"), 0)
+	wgIface := strings.TrimSpace(r.FormValue("wg_interface"))
+	serverAddr := strings.TrimSpace(r.FormValue("wg_server_address"))
+	clientRange := strings.TrimSpace(r.FormValue("wg_client_range"))
+	priv := strings.TrimSpace(r.FormValue("iface_private_key"))
+	pub := strings.TrimSpace(r.FormValue("iface_public_key"))
+
+	if port < 1 || port > 65535 {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("listen port must be between 1 and 65535"), http.StatusFound)
+		return
+	}
+
+	if _, err := wireguard.CreateWireGuardInterface(h.svc.DB, h.svc.Config.DataDir, name, host, port, wgIface, serverAddr, clientRange, priv, pub); err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	if err := wireguard.WriteAndApplyAll(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface); err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	h.reconcilePCQ()
+	http.Redirect(w, r, "/ui/wireguard?msgType=success&msg="+urlQueryEscape("Additional WireGuard interface added."), http.StatusFound)
+}
+
+func (h *Handlers) WireGuardInterfaceDeletePost(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" || id == "wireguard" {
+		http.NotFound(w, r)
+		return
+	}
+	var n int
+	if err := h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_users WHERE server_id = ?`, id).Scan(&n); err != nil {
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	if n > 0 {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("Remove or delete VPN users on this interface before removing it."), http.StatusFound)
+		return
+	}
+	res, err := h.svc.DB.Exec(`DELETE FROM vpn_servers WHERE id = ? AND id <> 'wireguard' AND protocol = 'wireguard'`, id)
+	if err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	_ = wireguard.WriteAndApplyAll(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
+	http.Redirect(w, r, "/ui/wireguard?msgType=success&msg="+urlQueryEscape("Interface removed."), http.StatusFound)
 }
 
 func (h *Handlers) SettingsPage(w http.ResponseWriter, r *http.Request) {
@@ -1757,6 +1981,34 @@ func (h *Handlers) WireGuardAPIPut(w http.ResponseWriter, r *http.Request) {
 
 func urlQueryEscape(s string) string {
 	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
+}
+
+func usersOrderByClause(sortKey, dir string) string {
+	d := "ASC"
+	if strings.EqualFold(strings.TrimSpace(dir), "desc") {
+		d = "DESC"
+	}
+	switch strings.ToLower(strings.TrimSpace(sortKey)) {
+	case "ip":
+		return "u.allowed_ips COLLATE NOCASE " + d
+	case "interface":
+		return "s.name COLLATE NOCASE " + d
+	case "status":
+		return "u.is_enabled " + d
+	case "usage":
+		return "(COALESCE(u.total_bytes_received,0)+COALESCE(u.bytes_received,0)+COALESCE(u.total_bytes_sent,0)+COALESCE(u.bytes_sent,0)) " + d
+	case "rem_days":
+		return "CASE WHEN u.remaining_days IS NULL THEN 1 ELSE 0 END ASC, u.remaining_days " + d
+	case "rem_traffic":
+		return "CASE WHEN u.remaining_traffic_bytes IS NULL THEN 1 ELSE 0 END ASC, u.remaining_traffic_bytes " + d
+	default:
+		return "u.username COLLATE NOCASE " + d
+	}
+}
+
+func (h *Handlers) applyWireGuardKernel() {
+	_ = wireguard.WriteAndApplyAll(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	h.reconcilePCQ()
 }
 
 func (h *Handlers) BandwidthHistoryAPI(w http.ResponseWriter, r *http.Request) {

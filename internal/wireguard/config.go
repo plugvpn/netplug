@@ -55,33 +55,78 @@ func WriteWireGuardConfig(sqlDB *sql.DB, dataDir string) error {
 		return errors.New("wireguard not enabled")
 	}
 
-	var (
-		serverPriv string
-		listenPort int
-	)
-	err = sqlDB.QueryRow(`SELECT private_key, COALESCE(port, 0) FROM vpn_servers WHERE id = 'wireguard' LIMIT 1`).Scan(&serverPriv, &listenPort)
+	rows, err := sqlDB.Query(`
+		SELECT id, config_path, COALESCE(port, 0), IFNULL(TRIM(private_key), ''),
+		       wg_server_address
+		FROM vpn_servers
+		WHERE protocol = 'wireguard' AND is_active = 1
+		ORDER BY id
+	`)
 	if err != nil {
 		return err
 	}
-	if listenPort == 0 {
-		listenPort = vc.WireGuard.ServerPort
-	}
+	defer rows.Close()
 
-	serverAddr := vc.WireGuard.ServerAddress
-	if !strings.Contains(serverAddr, "/") {
-		// wg-quick wants CIDR; default /24 if it looks like v4.
-		if net.ParseIP(serverAddr) != nil && strings.Count(serverAddr, ".") == 3 {
-			serverAddr = serverAddr + "/24"
+	for rows.Next() {
+		var (
+			srvID                              string
+			configPath, serverPriv, wgSrvAddr sql.NullString
+			listenPort                         int
+		)
+		if err := rows.Scan(&srvID, &configPath, &listenPort, &serverPriv, &wgSrvAddr); err != nil {
+			return err
+		}
+		id := strings.TrimSpace(srvID)
+		if id == "" || !serverPriv.Valid || strings.TrimSpace(serverPriv.String) == "" {
+			continue
+		}
+		if listenPort == 0 {
+			listenPort = vc.WireGuard.ServerPort
+		}
+
+		serverAddr := strings.TrimSpace(wgSrvAddr.String)
+		if serverAddr == "" {
+			if id == "wireguard" {
+				serverAddr = vc.WireGuard.ServerAddress
+			} else {
+				continue
+			}
+		}
+		if !strings.Contains(serverAddr, "/") {
+			if net.ParseIP(serverAddr) != nil && strings.Count(serverAddr, ".") == 3 {
+				serverAddr = serverAddr + "/24"
+			}
+		}
+
+		path := strings.TrimSpace(configPath.String)
+		if path == "" {
+			if id == "wireguard" {
+				path = filepath.Join(dataDir, "wg0.conf")
+			} else {
+				path = filepath.Join(dataDir, id+".conf")
+			}
+		} else if !filepath.IsAbs(path) {
+			path = filepath.Join(dataDir, path)
+		}
+
+		if err := writeWireGuardServerConfigFile(sqlDB, &vc, id, path, strings.TrimSpace(serverPriv.String), listenPort, serverAddr); err != nil {
+			return err
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return nil
+}
 
+func writeWireGuardServerConfigFile(sqlDB *sql.DB, vc *vpnConfiguration, serverID, path, serverPriv string, listenPort int, serverAddr string) error {
 	var buf bytes.Buffer
 
-	// Header (parity with original web UI output)
 	generatedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	buf.WriteString("# WireGuard Server Configuration\n")
 	buf.WriteString("# Generated at: " + generatedAt + "\n")
-	buf.WriteString("# DO NOT EDIT MANUALLY - This file is auto-generated\n\n")
+	buf.WriteString("# DO NOT EDIT MANUALLY - This file is auto-generated\n")
+	buf.WriteString("# Instance: " + serverID + "\n\n")
 
 	buf.WriteString("[Interface]\n")
 	buf.WriteString(fmt.Sprintf("PrivateKey = %s\n", serverPriv))
@@ -106,26 +151,26 @@ func WriteWireGuardConfig(sqlDB *sql.DB, dataDir string) error {
 		PresharedKey sql.NullString
 		AllowedIPs   sql.NullString
 	}
-	rows, err := sqlDB.Query(`
+	prows, err := sqlDB.Query(`
 		SELECT username, public_key, preshared_key, allowed_ips
 		FROM vpn_users
-		WHERE server_id = 'wireguard' AND is_enabled = 1 AND public_key IS NOT NULL AND public_key <> ''
+		WHERE server_id = ? AND is_enabled = 1 AND public_key IS NOT NULL AND public_key <> ''
 		ORDER BY username ASC
-	`)
+	`, serverID)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer prows.Close()
 
 	var peers []peerRow
-	for rows.Next() {
+	for prows.Next() {
 		var p peerRow
-		if err := rows.Scan(&p.Username, &p.PublicKey, &p.PresharedKey, &p.AllowedIPs); err != nil {
+		if err := prows.Scan(&p.Username, &p.PublicKey, &p.PresharedKey, &p.AllowedIPs); err != nil {
 			return err
 		}
 		peers = append(peers, p)
 	}
-	if err := rows.Err(); err != nil {
+	if err := prows.Err(); err != nil {
 		return err
 	}
 	sort.Slice(peers, func(i, j int) bool { return peers[i].Username < peers[j].Username })
@@ -148,7 +193,6 @@ func WriteWireGuardConfig(sqlDB *sql.DB, dataDir string) error {
 		buf.WriteString("\n")
 	}
 
-	path := filepath.Join(dataDir, "wg0.conf")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
 		return err

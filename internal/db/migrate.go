@@ -67,13 +67,16 @@ CREATE TABLE IF NOT EXISTS vpn_servers (
   is_active INTEGER NOT NULL DEFAULT 1,
   private_key TEXT NULL,
   public_key TEXT NULL,
+  wg_interface TEXT NULL,
+  wg_server_address TEXT NULL,
+  wg_client_range TEXT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS vpn_users (
   id TEXT PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
+  username TEXT NOT NULL,
   common_name TEXT NULL,
   allowed_ips TEXT NULL,
   endpoint TEXT NULL,
@@ -99,6 +102,7 @@ CREATE TABLE IF NOT EXISTS vpn_users (
   peer_icon TEXT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(server_id, username),
   FOREIGN KEY(server_id) REFERENCES vpn_servers(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_vpn_users_server_id ON vpn_users(server_id);

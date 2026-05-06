@@ -413,17 +413,43 @@ func (h *Handlers) GroupPCQTogglePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) reconcilePCQ() {
-	if h == nil || h.svc.DB == nil {
+	if h == nil || h.svc == nil {
 		return
 	}
-	if h.svc.Config.PCQDisabled {
+	ApplyPCQAllInterfaces(h.svc)
+}
+
+// ApplyPCQAllInterfaces applies queue shaping on every active WireGuard interface (Linux).
+func ApplyPCQAllInterfaces(svc *Services) {
+	if svc == nil || svc.DB == nil || svc.Config.PCQDisabled {
 		return
 	}
 	opts := pcq.ApplyOpts{
-		Debug:  h.svc.Config.Debug,
-		Logger: h.svc.Logger,
+		Debug:  svc.Config.Debug,
+		Logger: svc.Logger,
 	}
-	if _, err := pcq.Apply(h.svc.DB, h.svc.Config.WGInterface, false, opts); err != nil && h.svc.Logger == nil {
-		log.Printf("pcq.Apply: %v", err)
+	rows, err := svc.DB.Query(`
+		SELECT COALESCE(NULLIF(TRIM(wg_interface), ''), ?)
+		FROM vpn_servers
+		WHERE protocol = 'wireguard' AND is_active = 1
+	`, svc.Config.WGInterface)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var iface string
+		if err := rows.Scan(&iface); err != nil {
+			continue
+		}
+		iface = strings.TrimSpace(iface)
+		if iface == "" || seen[iface] {
+			continue
+		}
+		seen[iface] = true
+		if _, err := pcq.Apply(svc.DB, iface, false, opts); err != nil && svc.Logger == nil {
+			log.Printf("pcq.Apply(%s): %v", iface, err)
+		}
 	}
 }

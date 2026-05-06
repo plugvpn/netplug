@@ -173,6 +173,92 @@
         </div>
 
         <div class="rounded border border-gray-200/90 bg-gray-50 p-8 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none">
+          <div class="mb-4 flex items-center gap-2">
+            <i data-lucide="layers" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Additional WireGuard interfaces</h3>
+          </div>
+          <p class="mb-6 text-sm text-gray-600 dark:text-gray-400">
+            Run multiple WireGuard tunnels on this host (different listen ports and subnets). Each interface gets its own config file; assign VPN users to an interface on the Users page.
+          </p>
+          {{if .ExtraWGInterfaces}}
+          <div class="mb-8 overflow-x-auto">
+            <table class="w-full min-w-[640px] text-left text-sm">
+              <thead class="border-b border-gray-200 text-xs text-gray-500 dark:border-[rgba(148,163,184,0.085)] dark:text-gray-400">
+                <tr>
+                  <th class="py-2 pr-4">Name</th>
+                  <th class="py-2 pr-4">Interface</th>
+                  <th class="py-2 pr-4">Endpoint</th>
+                  <th class="py-2 pr-4">Tunnel / Pool</th>
+                  <th class="py-2 pr-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-[rgba(148,163,184,0.06)]">
+                {{range .ExtraWGInterfaces}}
+                <tr>
+                  <td class="py-2 pr-4 font-medium text-gray-900 dark:text-gray-100">{{.Name}}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-emerald-600 dark:text-emerald-400">{{.WGInterface}}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-gray-700 dark:text-gray-300">{{.Host}}:{{.Port}}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-gray-600 dark:text-gray-400">
+                    <div>{{.ServerTunnel}}</div>
+                    <div class="text-gray-500">{{.ClientRange}}</div>
+                  </td>
+                  <td class="py-2 text-right">
+                    <form method="post" action="/ui/wireguard/interfaces/{{.ID}}/delete" class="inline" onsubmit="return confirm('Remove this interface from NetPlug?');">
+                      <button type="submit" class="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950">Remove</button>
+                    </form>
+                  </td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+          {{else}}
+          <p class="mb-6 text-sm text-gray-500 dark:text-gray-500">No additional interfaces yet.</p>
+          {{end}}
+
+          <div class="border-t border-gray-200 pt-6 dark:border-[rgba(148,163,184,0.06)]">
+            <h4 class="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-100">Add interface</h4>
+            <form method="post" action="/ui/wireguard/interfaces" class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Display name *</label>
+                <input name="iface_name" required class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="EU tunnel" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Endpoint host *</label>
+                <input name="iface_host" required class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="Same as primary VPN hostname/IP" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Listen port *</label>
+                <input name="iface_port" type="number" min="1" max="65535" required class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="51821" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Linux interface name *</label>
+                <input name="wg_interface" required class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="wg1" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Server tunnel address *</label>
+                <input name="wg_server_address" required class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="10.1.0.1/24" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Client address pool *</label>
+                <input name="wg_client_range" required class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="10.1.0.0/24" />
+              </div>
+              <div class="md:col-span-2">
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Server private key (optional)</label>
+                <input name="iface_private_key" type="password" autocomplete="off" class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="Leave empty to auto-generate" />
+              </div>
+              <div class="md:col-span-2">
+                <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Server public key (optional)</label>
+                <input name="iface_public_key" class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100" placeholder="Optional if private key is generated" />
+              </div>
+              <div class="md:col-span-2">
+                <button type="submit" class="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:from-emerald-600 hover:to-teal-600">Create interface</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="rounded border border-gray-200/90 bg-gray-50 p-8 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none">
           <div class="mb-6 flex items-center gap-3">
             <i data-lucide="sliders-horizontal" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Advanced Settings</h3>

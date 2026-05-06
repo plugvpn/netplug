@@ -11,6 +11,11 @@ import (
 
 func ApplyConfig(dataDir string, configuredInterface string) error {
 	confPath := filepath.Join(dataDir, "wg0.conf")
+	return ApplyConfigFile(confPath, configuredInterface)
+}
+
+// ApplyConfigFile applies a single wg-quick config file to its WireGuard interface.
+func ApplyConfigFile(confPath string, configuredInterface string) error {
 	if _, err := os.Stat(confPath); err != nil {
 		return err
 	}

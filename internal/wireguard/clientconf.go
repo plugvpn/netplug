@@ -23,13 +23,14 @@ func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filena
 		privKey    sql.NullString
 		address    sql.NullString
 		psk        sql.NullString
+		serverID   string
 	)
 	err = sqlDB.QueryRow(`
-		SELECT username, private_key, allowed_ips, preshared_key
+		SELECT username, private_key, allowed_ips, preshared_key, server_id
 		FROM vpn_users
 		WHERE id = ?
 		LIMIT 1
-	`, userID).Scan(&username, &privKey, &address, &psk)
+	`, userID).Scan(&username, &privKey, &address, &psk, &serverID)
 	if err != nil {
 		return "", "", err
 	}
@@ -55,7 +56,7 @@ func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filena
 		serverHost string
 		serverPort int
 	)
-	err = sqlDB.QueryRow(`SELECT public_key, host, COALESCE(port, 0) FROM vpn_servers WHERE id='wireguard' LIMIT 1`).Scan(&serverPub, &serverHost, &serverPort)
+	err = sqlDB.QueryRow(`SELECT public_key, host, COALESCE(port, 0) FROM vpn_servers WHERE id = ? LIMIT 1`, serverID).Scan(&serverPub, &serverHost, &serverPort)
 	if err != nil {
 		return "", "", err
 	}
