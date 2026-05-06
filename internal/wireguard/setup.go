@@ -77,3 +77,83 @@ func UpsertWireGuardServer(db *sql.DB, dataDir string, s SetupConfig) error {
 	return err
 }
 
+// CreateWireGuardInterface inserts an additional WireGuard server row (separate listen port, subnet, config file).
+func CreateWireGuardInterface(db *sql.DB, dataDir, displayName, host string, port int, wgIface, serverTunnelCIDR, clientPoolCIDR, privKey, pubKey string) (serverID string, err error) {
+	if db == nil {
+		return "", errors.New("db is nil")
+	}
+	displayName = strings.TrimSpace(displayName)
+	host = strings.TrimSpace(host)
+	wgIface = strings.TrimSpace(wgIface)
+	serverTunnelCIDR = strings.TrimSpace(serverTunnelCIDR)
+	clientPoolCIDR = strings.TrimSpace(clientPoolCIDR)
+	if displayName == "" {
+		return "", errors.New("display name is required")
+	}
+	if host == "" {
+		return "", errors.New("endpoint host is required")
+	}
+	if port < 1 || port > 65535 {
+		return "", errors.New("listen port must be between 1 and 65535")
+	}
+	if err := ValidateWGInterfaceName(wgIface); err != nil {
+		return "", err
+	}
+	if serverTunnelCIDR == "" || clientPoolCIDR == "" {
+		return "", errors.New("server tunnel address and client IP pool are required")
+	}
+	privKey = strings.TrimSpace(privKey)
+	pubKey = strings.TrimSpace(pubKey)
+	if privKey == "" {
+		privKey, pubKey, err = GenerateKeyPair()
+		if err != nil {
+			return "", err
+		}
+	} else {
+		derived, err := DerivePublicKey(privKey)
+		if err != nil {
+			return "", errors.New("invalid server private key")
+		}
+		if pubKey == "" {
+			pubKey = derived
+		} else if pubKey != derived {
+			return "", errors.New("server public key mismatch")
+		}
+	}
+
+	serverID = NewID()
+	confPath := filepath.Join(dataDir, serverID+".conf")
+
+	_, err = db.Exec(`
+		INSERT INTO vpn_servers (
+		  id, name, protocol, host, port, config_path, is_active,
+		  private_key, public_key, wg_interface, wg_server_address, wg_client_range
+		)
+		VALUES (?, ?, 'wireguard', ?, ?, ?, 1, ?, ?, ?, ?, ?)
+	`, serverID, displayName, host, port, confPath, privKey, pubKey, wgIface, serverTunnelCIDR, clientPoolCIDR)
+	if err != nil {
+		return "", err
+	}
+	return serverID, nil
+}
+
+// ValidateWGInterfaceName checks a Linux WireGuard interface name (e.g. wg1).
+func ValidateWGInterfaceName(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return errors.New("interface name is required")
+	}
+	if len(s) > 15 {
+		return errors.New("interface name is too long")
+	}
+	for _, r := range s {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
+		if !ok {
+			return errors.New("interface name may only contain letters, digits, hyphen, underscore")
+		}
+	}
+	if !strings.HasPrefix(s, "wg") {
+		return errors.New("interface name should start with wg (e.g. wg1)")
+	}
+	return nil
+}

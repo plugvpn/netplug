@@ -14,7 +14,7 @@
         </div>
         <button
           class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600"
-          hx-get="/partials/users/add-modal"
+          hx-get="/partials/users/add-modal{{if .FilterServer}}?server_id={{.FilterServer}}{{end}}"
           hx-target="#modal-root"
           hx-swap="innerHTML"
           type="button"
@@ -25,8 +25,8 @@
       </div>
 
       {{if .Users}}
-      <div class="mb-6">
-        <div class="relative">
+      <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="relative min-w-0 flex-1">
           <i data-lucide="search" class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
           <input
             id="users-search"
@@ -35,6 +35,19 @@
             class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100 dark:placeholder-gray-500"
           />
         </div>
+        {{if .WireGuardServers}}
+        <form method="get" action="/ui/users" class="flex shrink-0 items-center gap-2">
+          <input type="hidden" name="sort" value="{{.CurrentSort}}" />
+          <input type="hidden" name="dir" value="{{.CurrentDir}}" />
+          <label class="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">Interface</label>
+          <select name="server" onchange="this.form.submit()" class="min-w-[10rem] rounded-lg border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100">
+            <option value="">All</option>
+            {{range .WireGuardServers}}
+            <option value="{{.ID}}" {{if eq $.FilterServer .ID}}selected{{end}}>{{.Name}}{{if .Interface}} ({{.Interface}}){{end}}</option>
+            {{end}}
+          </select>
+        </form>
+        {{end}}
       </div>
       {{end}}
 
@@ -61,12 +74,13 @@
           <table class="w-full" style="background-color:var(--np-panel);">
             <thead style="background-color:var(--np-raised);">
               <tr class="border-b border-[rgba(148,163,184,0.07)] text-left text-sm font-medium text-gray-300 dark:text-gray-400">
-                <th class="px-6 py-3">Username</th>
-                <th class="px-6 py-3">IP Address</th>
-                <th class="px-6 py-3">Status</th>
-                <th class="px-8 py-3">Total Usage</th>
-                <th class="px-6 py-3">Remaining Days</th>
-                <th class="px-6 py-3">Remaining Traffic</th>
+                <th class="px-6 py-3"><a href="{{.SortHrefUsername}}" class="inline-flex items-center gap-1 hover:text-emerald-400">Username <span class="font-normal text-gray-500">{{.SortIconUsername}}</span></a></th>
+                <th class="px-6 py-3"><a href="{{.SortHrefInterface}}" class="inline-flex items-center gap-1 hover:text-emerald-400">Interface <span class="font-normal text-gray-500">{{.SortIconInterface}}</span></a></th>
+                <th class="px-6 py-3"><a href="{{.SortHrefIP}}" class="inline-flex items-center gap-1 hover:text-emerald-400">IP Address <span class="font-normal text-gray-500">{{.SortIconIP}}</span></a></th>
+                <th class="px-6 py-3"><a href="{{.SortHrefStatus}}" class="inline-flex items-center gap-1 hover:text-emerald-400">Status <span class="font-normal text-gray-500">{{.SortIconStatus}}</span></a></th>
+                <th class="px-8 py-3"><a href="{{.SortHrefUsage}}" class="inline-flex items-center gap-1 hover:text-emerald-400">Total Usage <span class="font-normal text-gray-500">{{.SortIconUsage}}</span></a></th>
+                <th class="px-6 py-3"><a href="{{.SortHrefRemDays}}" class="inline-flex items-center gap-1 hover:text-emerald-400">Remaining Days <span class="font-normal text-gray-500">{{.SortIconRemDays}}</span></a></th>
+                <th class="px-6 py-3"><a href="{{.SortHrefRemTraffic}}" class="inline-flex items-center gap-1 hover:text-emerald-400">Remaining Traffic <span class="font-normal text-gray-500">{{.SortIconRemTraffic}}</span></a></th>
                 <th class="px-6 py-3">Connection</th>
                 <th class="px-6 py-3 text-right">Actions</th>
               </tr>
@@ -74,7 +88,7 @@
             <tbody class="divide-y divide-[rgba(148,163,184,0.045)]" style="background-color:var(--np-panel);">
               {{if not .Users}}
               <tr>
-                <td class="px-6 py-6 text-sm text-gray-500 dark:text-gray-500" colspan="8">No users found.</td>
+                <td class="px-6 py-6 text-sm text-gray-500 dark:text-gray-500" colspan="9">No users found.</td>
               </tr>
               {{end}}
               {{range $i, $u := .Users}}
@@ -82,6 +96,7 @@
                 class="users-row"
                 data-username="{{$u.Username}}"
                 data-ip="{{$u.IPAddress}}"
+                data-interface="{{$u.WGServerName}}"
               >
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
@@ -92,6 +107,12 @@
                       <p class="font-medium text-gray-100 dark:text-gray-100">{{$u.Username}}</p>
                     </div>
                   </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm text-gray-200 dark:text-gray-200">{{$u.WGServerName}}</div>
+                  {{if $u.WGInterface}}
+                  <div class="font-mono text-xs text-gray-500 dark:text-gray-500">{{$u.WGInterface}}</div>
+                  {{end}}
                 </td>
                 <td class="px-6 py-4">
                   {{if $u.IPAddress}}
@@ -210,7 +231,8 @@
       rows.forEach(function (row) {
         const u = norm(row.getAttribute('data-username'));
         const ip = norm(row.getAttribute('data-ip'));
-        const ok = !q || u.includes(q) || ip.includes(q);
+        const iface = norm(row.getAttribute('data-interface'));
+        const ok = !q || u.includes(q) || ip.includes(q) || iface.includes(q);
         row.style.display = ok ? '' : 'none';
       });
     });

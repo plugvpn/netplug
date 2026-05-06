@@ -25,6 +25,20 @@
     </div>
 
     <form method="post" action="/ui/users" class="px-6 py-4 space-y-4 overflow-y-auto" style="max-height: calc(100vh - 11rem);">
+      {{if .WireGuardServers}}
+      <div>
+        <label class="block text-xs font-medium text-gray-300 mb-2">WireGuard interface *</label>
+        <select id="modal_server_id" name="server_id" onchange="modalRefreshNextIP()" class="w-full h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#0a0d12] px-3 text-sm text-gray-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600">
+          {{range .WireGuardServers}}
+          <option value="{{.ID}}" {{if eq $.DefaultServerID .ID}}selected{{end}}>{{.Name}}{{if .Interface}} — {{.Interface}}{{end}}</option>
+          {{end}}
+        </select>
+        <div class="mt-1 text-[11px] text-gray-500">Users are tied to one interface; choose before generating keys.</div>
+      </div>
+      {{else}}
+      <input type="hidden" name="server_id" value="wireguard" />
+      {{end}}
+
       <div>
         <label class="block text-xs font-medium text-gray-300 mb-2">Username *</label>
         <div class="flex items-center gap-2">
@@ -39,7 +53,7 @@
           />
         </div>
         <div class="mt-2 text-[11px] text-gray-500">
-          Must be unique. Changing username updates this peer everywhere in the dashboard.
+          Must be unique per interface. Changing username updates this peer everywhere in the dashboard.
         </div>
       </div>
 
@@ -181,6 +195,18 @@
       }
     }, 0);
   })();
+
+  async function modalRefreshNextIP() {
+    const sel = document.getElementById('modal_server_id');
+    const sid = sel && sel.value ? sel.value : '';
+    let url = '/api/users/next-ip';
+    if (sid) url += '?server_id=' + encodeURIComponent(sid);
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const j = await res.json();
+    const el = document.getElementById('modal_vpn_ip');
+    if (el && j.allowedIps) el.value = j.allowedIps;
+  }
 
   async function modalGenerateKeys() {
     const res = await fetch('/api/users/generate-keys', { method: 'POST', credentials: 'same-origin' });

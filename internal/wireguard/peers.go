@@ -23,6 +23,15 @@ func GeneratePresharedKey() (string, error) {
 }
 
 func NextClientAllowedIP(sqlDB *sql.DB) (string, error) {
+	return NextClientAllowedIPForServer(sqlDB, "wireguard")
+}
+
+// NextClientAllowedIPForServer picks the next free /32 inside the client pool for the given WireGuard server row.
+func NextClientAllowedIPForServer(sqlDB *sql.DB, serverID string) (string, error) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return "", errors.New("server id is required")
+	}
 	sys, err := db.GetSystemConfig(sqlDB)
 	if err != nil {
 		return "", err
@@ -41,14 +50,35 @@ func NextClientAllowedIP(sqlDB *sql.DB) (string, error) {
 		return "", err
 	}
 
-	_, cidr, err := net.ParseCIDR(strings.TrimSpace(vc.WireGuard.ClientAddressRange))
+	var wgClientRange, wgServerAddr sql.NullString
+	err = sqlDB.QueryRow(`
+		SELECT wg_client_range, wg_server_address FROM vpn_servers WHERE id = ? LIMIT 1
+	`, serverID).Scan(&wgClientRange, &wgServerAddr)
+	if err != nil {
+		return "", err
+	}
+
+	clientRangeStr := strings.TrimSpace(wgClientRange.String)
+	if !wgClientRange.Valid || clientRangeStr == "" {
+		clientRangeStr = strings.TrimSpace(vc.WireGuard.ClientAddressRange)
+	}
+	if clientRangeStr == "" {
+		return "", errors.New("client address range is not configured for this interface")
+	}
+
+	_, cidr, err := net.ParseCIDR(clientRangeStr)
 	if err != nil {
 		return "", errors.New("invalid client CIDR")
 	}
-	serverIP := parseServerIPv4(vc.WireGuard.ServerAddress)
+
+	serverAddrForReserve := strings.TrimSpace(vc.WireGuard.ServerAddress)
+	if wgServerAddr.Valid && strings.TrimSpace(wgServerAddr.String) != "" {
+		serverAddrForReserve = strings.TrimSpace(wgServerAddr.String)
+	}
+	serverIP := parseServerIPv4(serverAddrForReserve)
 
 	used := map[string]bool{}
-	rows, err := sqlDB.Query(`SELECT allowed_ips FROM vpn_users WHERE server_id='wireguard' AND allowed_ips IS NOT NULL AND allowed_ips <> ''`)
+	rows, err := sqlDB.Query(`SELECT allowed_ips FROM vpn_users WHERE server_id = ? AND allowed_ips IS NOT NULL AND allowed_ips <> ''`, serverID)
 	if err != nil {
 		return "", err
 	}

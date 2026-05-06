@@ -21,7 +21,6 @@ import (
 	"netplug-go/internal/app"
 	"netplug-go/internal/assets"
 	"netplug-go/internal/db"
-	"netplug-go/internal/pcq"
 	"netplug-go/internal/view"
 	"netplug-go/internal/wireguard"
 	webstatic "netplug-go/web/static"
@@ -118,14 +117,7 @@ func main() {
 		} else {
 			log.Printf("wireguard startup: interface is up")
 			if !cfg.PCQDisabled {
-				if _, err := pcq.Apply(sqlDB, cfg.WGInterface, false, pcq.ApplyOpts{
-					Debug:  cfg.Debug,
-					Logger: svc.Logger,
-				}); err != nil {
-					if svc.Logger == nil {
-						log.Printf("pcq startup: %v", err)
-					}
-				}
+				app.ApplyPCQAllInterfaces(svc)
 			}
 		}
 	}

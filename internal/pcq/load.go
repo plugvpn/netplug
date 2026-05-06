@@ -54,7 +54,7 @@ func LoadPeerLimits(db *sql.DB) (map[string]PeerLimit, error) {
 		FROM vpn_users u
 		INNER JOIN vpn_group_members m ON m.vpn_user_id = u.id
 		INNER JOIN vpn_group_pcq p ON p.group_id = m.group_id
-		WHERE u.server_id = 'wireguard' AND u.is_enabled = 1 AND p.is_disabled = 0
+		WHERE u.server_id IN (SELECT id FROM vpn_servers WHERE protocol = 'wireguard') AND u.is_enabled = 1 AND p.is_disabled = 0
 	`)
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func LoadPeerLimitsForGroup(db *sql.DB, groupID string) (map[string]PeerLimit, e
 		FROM vpn_users u
 		INNER JOIN vpn_group_members m ON m.vpn_user_id = u.id AND m.group_id = ?
 		INNER JOIN vpn_group_pcq p ON p.group_id = m.group_id
-		WHERE u.server_id = 'wireguard' AND u.is_enabled = 1 AND p.is_disabled = 0
+		WHERE u.server_id IN (SELECT id FROM vpn_servers WHERE protocol = 'wireguard') AND u.is_enabled = 1 AND p.is_disabled = 0
 	`, groupID)
 	if err != nil {
 		return nil, err

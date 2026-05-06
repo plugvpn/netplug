@@ -83,34 +83,6 @@ type peer struct {
 }
 
 func (s *Syncer) syncOnce(ctx context.Context) error {
-	iface, err := actualInterface(ctx, s.wgInterface)
-	if err != nil {
-		if !errors.Is(err, errNoWG) {
-			log.Printf("[wireguard] interface lookup error: %v", err)
-		}
-		return err
-	}
-	if iface == "" {
-		return nil
-	}
-
-	out, err := execWG(ctx, "wg", "show", iface, "dump")
-	if err != nil {
-		log.Printf("[wireguard] wg show dump failed: %v", err)
-		return err
-	}
-
-	status, err := parseDump(out)
-	if err != nil {
-		log.Printf("[wireguard] parse dump failed: %v", err)
-		return err
-	}
-
-	peerByKey := make(map[string]peer, len(status))
-	for _, p := range status {
-		peerByKey[p.PublicKey] = p
-	}
-
 	now := time.Now()
 	timeoutSec := int64(120)
 	intervalSec := int64(max(1, s.intervalSec))
@@ -121,25 +93,81 @@ func (s *Syncer) syncOnce(ctx context.Context) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	rows, err := tx.QueryContext(ctx, `
-		SELECT id, username, public_key, is_connected,
-		       bytes_received, bytes_sent, prev_bytes_received, prev_bytes_sent,
-		       total_bytes_received, total_bytes_sent,
-		       remaining_days, remaining_traffic_bytes, last_day_check, is_enabled
-		FROM vpn_users
-		WHERE server_id IN (SELECT id FROM vpn_servers WHERE protocol = 'wireguard')
+	srvRows, err := tx.QueryContext(ctx, `
+		SELECT id, NULLIF(TRIM(wg_interface), '')
+		FROM vpn_servers
+		WHERE protocol = 'wireguard' AND is_active = 1
+		ORDER BY id
 	`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer srvRows.Close()
 
 	var (
 		totalDownloadRate int64
 		totalUploadRate   int64
 	)
 
-	for rows.Next() {
+	for srvRows.Next() {
+		var serverID string
+		var ifOpt sql.NullString
+		if err := srvRows.Scan(&serverID, &ifOpt); err != nil {
+			return err
+		}
+
+		ifaceName := strings.TrimSpace(s.wgInterface)
+		if ifOpt.Valid && ifOpt.String != "" {
+			ifaceName = ifOpt.String
+		}
+
+		actual, err := actualInterface(ctx, ifaceName)
+		if err != nil {
+			if !errors.Is(err, errNoWG) {
+				log.Printf("[wireguard] interface lookup error: %v", err)
+			}
+			return err
+		}
+
+		if actual == "" {
+			_, _ = tx.ExecContext(ctx, `
+				UPDATE vpn_users
+				SET is_connected = 0, endpoint = NULL, last_handshake = NULL, updated_at = datetime('now')
+				WHERE server_id = ? AND is_connected = 1
+			`, serverID)
+			continue
+		}
+
+		out, err := execWG(ctx, "wg", "show", actual, "dump")
+		if err != nil {
+			log.Printf("[wireguard] wg show dump failed (%s): %v", actual, err)
+			continue
+		}
+
+		status, err := parseDump(out)
+		if err != nil {
+			log.Printf("[wireguard] parse dump failed: %v", err)
+			continue
+		}
+
+		peerByKey := make(map[string]peer, len(status))
+		for _, p := range status {
+			peerByKey[p.PublicKey] = p
+		}
+
+		rows, err := tx.QueryContext(ctx, `
+			SELECT id, username, public_key, is_connected,
+			       bytes_received, bytes_sent, prev_bytes_received, prev_bytes_sent,
+			       total_bytes_received, total_bytes_sent,
+			       remaining_days, remaining_traffic_bytes, last_day_check, is_enabled
+			FROM vpn_users
+			WHERE server_id = ?
+		`, serverID)
+		if err != nil {
+			return err
+		}
+
+		for rows.Next() {
 		var (
 			id, username         string
 			publicKey            sql.NullString
@@ -320,10 +348,17 @@ func (s *Syncer) syncOnce(ctx context.Context) error {
 		)
 		if err != nil {
 			_ = username
+			rows.Close()
 			return err
 		}
 	}
-	if err := rows.Err(); err != nil {
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+	}
+	if err := srvRows.Err(); err != nil {
 		return err
 	}
 
@@ -368,8 +403,10 @@ func actualInterface(ctx context.Context, configured string) (string, error) {
 			return p, nil
 		}
 	}
-	// On macOS, wg0 maps to utunX. Best-effort: pick first interface.
-	return parts[0], nil
+	if len(parts) == 1 {
+		return parts[0], nil
+	}
+	return "", nil
 }
 
 func parseDump(output string) ([]peer, error) {
